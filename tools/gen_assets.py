@@ -3,7 +3,7 @@
 """Regenerate luneos-charger's artwork: assets/logo.png, text.png and text.idx.
 
 Not run at build time - Pillow is not something the initramfs build should
-need - so the outputs are committed. Rerun after changing the logo, the font,
+need - so the outputs are committed. Rerun after changing the logo, the fonts,
 the sizes or the strings, and commit all three files.
 
 Everything is rendered at ASSET_SCALE times design size (src/render.h: a
@@ -19,19 +19,23 @@ gets it at half size, and nothing up to 2880 wide is blurred by upscaling.
 Digits and '%' are rendered in cells of the font's full ascent + descent and
 their advance width, so they line up on a common baseline side by side.
 
-Usage: gen_assets.py <logo> <font.ttf> <outdir>
+Usage: gen_assets.py <logo> <digit-font.ttf> <text-font.ttf> <outdir>
 
 The committed outputs come from:
-  logo  psd/Luneos-logo-1024.psd in https://github.com/webOS-ports/graphics
-        (commit be7566c), the LuneOS logo's source art; Pillow reads the
-        PSD's flattened composite
-  font  Noto Sans Regular (SIL Open Font License 1.1, which places no
-        conditions on rendered output), as in Debian/Ubuntu's fonts-noto-core:
-        /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf
+  logo   psd/Luneos-logo-1024.psd in https://github.com/webOS-ports/graphics
+         (commit be7566c), the LuneOS logo's source art; Pillow reads the
+         PSD's flattened composite
+  fonts  Prelude, the webOS typeface, from files/conf/fonts/fonts.tgz in
+         webOS-ports/luna-init: PreludeWGL-Light.ttf for the percentage (the
+         big light numerals of the webOS UI) and Prelude-Medium.ttf for the
+         words. Prelude is HP Proprietary Software under the Open webOS
+         Software Font License (assets/Prelude_Font_LICENSE.txt), so text.png
+         is under that licence too, not under the code's Apache-2.0.
 
   git clone https://github.com/webOS-ports/graphics
+  tar xzf luna-init/files/conf/fonts/fonts.tgz PreludeWGL-Light.ttf Prelude-Medium.ttf
   tools/gen_assets.py graphics/psd/Luneos-logo-1024.psd \
-      /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf assets
+      PreludeWGL-Light.ttf Prelude-Medium.ttf assets
 """
 import os
 import sys
@@ -49,6 +53,7 @@ HINT_PT = 53 * ASSET_SCALE
 STRINGS = [
     ('charging', 'Charging', LABEL_PT),
     ('charged', 'Charged', LABEL_PT),
+    ('fast', 'Fast charging', LABEL_PT),
     ('hint', 'Hold the power key to start LuneOS', HINT_PT),
     ('unplugged', 'Charger removed, powering off', HINT_PT),
     ('too_low', 'Battery too low to start', HINT_PT),
@@ -63,23 +68,23 @@ def text_cov(text, font):
 
 
 def main():
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 5:
         sys.exit(__doc__)
-    logo_path, font_path, outdir = sys.argv[1:4]
+    logo_path, digit_font, text_font, outdir = sys.argv[1:5]
 
     Image.open(logo_path).convert('RGBA').resize(
         (LOGO_SIZE, LOGO_SIZE), Image.LANCZOS).save(
         os.path.join(outdir, 'logo.png'), optimize=True)
 
     entries = []
-    font = ImageFont.truetype(font_path, DIGIT_PT)
+    font = ImageFont.truetype(digit_font, DIGIT_PT)
     ascent, descent = font.getmetrics()
     for ch, name in [(c, c) for c in '0123456789'] + [('%', 'pct')]:
         im = Image.new('L', (int(round(font.getlength(ch))), ascent + descent), 0)
         ImageDraw.Draw(im).text((0, 0), ch, font=font, fill=255)
         entries.append(('glyph_' + name, im))
     for name, text, pt in STRINGS:
-        entries.append((name, text_cov(text, ImageFont.truetype(font_path, pt))))
+        entries.append((name, text_cov(text, ImageFont.truetype(text_font, pt))))
 
     width = max(im.width for _, im in entries)
     atlas = Image.new('L', (width, sum(im.height for _, im in entries)), 0)

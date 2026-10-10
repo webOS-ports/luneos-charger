@@ -30,7 +30,7 @@ extern "C" {
 
 enum sprite_id {
     SPR_DIGIT0, SPR_DIGIT9 = SPR_DIGIT0 + 9, SPR_PCT,
-    SPR_CHARGING, SPR_CHARGED, SPR_HINT, SPR_UNPLUGGED, SPR_TOO_LOW,
+    SPR_CHARGING, SPR_CHARGED, SPR_FAST, SPR_HINT, SPR_UNPLUGGED, SPR_TOO_LOW,
     SPR_N
 };
 
@@ -74,6 +74,7 @@ void layout_compute(int w, int h, int glyph_h, struct layout *L);
 struct scene {
     int level;                      /* percent shown, -1 unknown */
     int full;
+    int fast;                       /* a fast charger: bolt and label */
     enum policy_message msg;
 };
 
@@ -82,6 +83,7 @@ struct renderer {
     uint32_t *canvas;               /* w * h, 0x00RRGGBB */
     struct layout L;
     struct art art;                 /* scaled to L.s */
+    struct image bolt;              /* coverage, sized to the battery */
     int animate;
     struct scene last;
     int have_last;

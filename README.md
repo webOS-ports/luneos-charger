@@ -81,7 +81,7 @@ resampled once at start-up. `--rotate` turns it for panels mounted sideways,
 luneos-charger --detect                  exit 0 on a charger boot, 1 otherwise
 luneos-charger [--display auto|drm|fbdev|none] [--rotate 0|90|180|270] [--static]
                [--timeout ms] [--hold ms] [--unplug ms] [--discovery ms]
-               [--min-capacity n] [--backlight file --brightness n]
+               [--min-capacity n] [--fast-watts n] [--backlight file --brightness n]
                [--led-red dir --led-green dir --led-blue dir | --no-leds]
                [--assets dir] [--level n] [--root dir]
 ```
@@ -102,18 +102,31 @@ policy state machine, PNG loading and resampling, the layout on panels from
 320×480 to 1440×3200, and pixel packing and rotation.
 
 `tools/gen_assets.py` regenerates `assets/` from the logo's PSD in
-webOS-ports/graphics and Noto Sans (needs Pillow; not run at build time -
-see the script for the exact command).
+webOS-ports/graphics and the Prelude fonts in luna-init (needs Pillow; not
+run at build time - see the script for the exact command).
+`luneos-charger-preview` renders the screen for any panel size and state.
 
 ## Licences
 
-The code is Apache-2.0 (`LICENSE`). `logo.png` is rendered from the LuneOS
-logo's source art, `psd/Luneos-logo-1024.psd` in
-[webOS-ports/graphics](https://github.com/webOS-ports/graphics); the same logo
-ships as a PNG in
-[org.webosports.app.photos](https://github.com/webOS-ports/org.webosports.app.photos)
-under Apache-2.0. `text.png` is text rendered from Noto Sans (SIL Open Font
-License 1.1, which places no conditions on rendered output).
+The code is Apache-2.0 (`LICENSE`).
+
+The artwork in `assets/` is not:
+
+- `logo.png` is rendered from the LuneOS logo's source art,
+  `psd/Luneos-logo-1024.psd` in
+  [webOS-ports/graphics](https://github.com/webOS-ports/graphics); the same
+  logo ships as a PNG in
+  [org.webosports.app.photos](https://github.com/webOS-ports/org.webosports.app.photos)
+  under Apache-2.0.
+- `text.png` is text rendered from **Prelude**, the webOS typeface
+  (`PreludeWGL-Light` for the percentage, `Prelude-Medium` for the words), as
+  shipped in webOS-ports/luna-init. Prelude is HP Proprietary Software under
+  the Open webOS Software Font License, `assets/Prelude_Font_LICENSE.txt`,
+  which allows its use for distributing Open webOS derivative works such as
+  LuneOS and does not allow it to be made subject to an open source licence.
+  `text.png` is therefore licensed under that agreement, not under
+  Apache-2.0. Portions copyright © HP, Inc., or its subsidiaries. All rights
+  reserved.
 
 The first version was written by alan-morford for the BlackBerry KEY2
 (meta-smartphone PR #6); this repository starts from that code.

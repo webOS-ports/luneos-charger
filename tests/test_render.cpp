@@ -86,6 +86,7 @@ TEST(ArtIdx, ParseLine)
     EXPECT_EQ(r.h, 273);
     EXPECT_EQ(art_parse_idx_line("glyph_9 0 2457 114 273", &r), SPR_DIGIT9);
     EXPECT_EQ(art_parse_idx_line("too_low 0 1 2 3", &r), SPR_TOO_LOW);
+    EXPECT_EQ(art_parse_idx_line("fast 0 1 2 3", &r), SPR_FAST);
     EXPECT_EQ(art_parse_idx_line("unknown 0 0 1 1", &r), -1);
     EXPECT_EQ(art_parse_idx_line("hint 0 0 0 1", &r), -1);
     EXPECT_EQ(art_parse_idx_line("hint -1 0 1 1", &r), -1);
@@ -128,12 +129,15 @@ TEST_P(Renderer, FramesOnEveryPanel)
     art_load(&design, assets());
     ASSERT_EQ(renderer_init(&r, w, h, &design, 1), 0);
 
-    struct scene sc = { 42, 0, POLICY_MSG_NONE };
+    struct scene sc = { 42, 0, 0, POLICY_MSG_NONE };
     EXPECT_EQ(renderer_frame(&r, &sc, 0), 1);       // first frame: all of it
     EXPECT_EQ(renderer_frame(&r, &sc, 500), 0);     // then the battery only
     EXPECT_TRUE(inside(r.dirty.x, r.dirty.y, r.dirty.w, r.dirty.h, w, h));
     sc.level = 43;
     EXPECT_EQ(renderer_frame(&r, &sc, 600), 1);     // a new level: all again
+    sc.fast = 1;
+    EXPECT_EQ(renderer_frame(&r, &sc, 650), 1);     // fast: new label and bolt
+    EXPECT_EQ(renderer_frame(&r, &sc, 660), 0);
     sc.msg = POLICY_MSG_UNPLUGGED;
     EXPECT_EQ(renderer_frame(&r, &sc, 700), 1);
     sc.full = 1;
@@ -175,13 +179,37 @@ TEST(Renderer, LogoScalesWithThePanel)
     }
 }
 
+// The bolt is drawn on a fast charger and not otherwise: the centre of the
+// battery's interior is white with it, blue (charge) without.
+TEST(Renderer, BoltOnFastCharger)
+{
+    struct art design;
+    struct renderer r;
+    art_load(&design, assets());
+    ASSERT_EQ(renderer_init(&r, 1080, 1920, &design, 0), 0);
+    ASSERT_NE(r.bolt.px, nullptr);
+    int cx = r.L.bat_x + r.L.bat_w / 2, cy = r.L.bat_y + r.L.bat_h / 2;
+    struct scene sc = { 90, 0, 0, POLICY_MSG_NONE };
+    renderer_frame(&r, &sc, 0);
+    uint32_t plain = r.canvas[(size_t)cy * 1080 + cx];
+    sc.fast = 1;
+    renderer_frame(&r, &sc, 0);
+    uint32_t bolt = r.canvas[(size_t)cy * 1080 + cx];
+    EXPECT_NE(plain, 0xffffffu);
+    EXPECT_EQ(bolt, 0xffffffu);
+    sc.full = 1;                                    // charged: no bolt
+    renderer_frame(&r, &sc, 0);
+    EXPECT_NE(r.canvas[(size_t)cy * 1080 + cx], 0xffffffu);
+    renderer_free(&r);
+}
+
 TEST(Renderer, StaticModeOnlyRedrawsOnChange)
 {
     struct art design;
     struct renderer r;
     art_load(&design, assets());
     ASSERT_EQ(renderer_init(&r, 540, 960, &design, 0), 0);
-    struct scene sc = { 42, 0, POLICY_MSG_NONE };
+    struct scene sc = { 42, 0, 0, POLICY_MSG_NONE };
     EXPECT_EQ(renderer_frame(&r, &sc, 0), 1);
     EXPECT_EQ(renderer_frame(&r, &sc, 500), -1);
     renderer_invalidate(&r);
@@ -195,7 +223,7 @@ TEST(Renderer, WithoutArtwork)
     struct renderer r;
     std::memset(&design, 0, sizeof(design));
     ASSERT_EQ(renderer_init(&r, 720, 1280, &design, 1), 0);
-    struct scene sc = { 7, 0, POLICY_MSG_TOO_LOW };
+    struct scene sc = { 7, 0, 1, POLICY_MSG_TOO_LOW };
     EXPECT_EQ(renderer_frame(&r, &sc, 0), 1);
     renderer_free(&r);
 }

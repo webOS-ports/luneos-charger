@@ -13,6 +13,7 @@
 
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "util.h"
@@ -85,6 +86,135 @@ enum charger_state power_charger(void)
     }
     closedir(d);
     return state;
+}
+
+/*
+ * Fast-charger detection. Two independent signals, either is enough:
+ *
+ *  - The protocol the charger negotiated. Downstream Qualcomm drivers name it
+ *    in the usb supply's "type" or "real_type" (USB_HVDCP for Quick Charge 2,
+ *    USB_HVDCP_3 for QC3, USB_PD for Power Delivery); mainline drivers list the
+ *    possible types in "usb_type" with the active one in brackets
+ *    ("SDP CDP [PD_PPS]").
+ *  - What the charger offers: current_max x voltage_max, the same product
+ *    Android's healthd and SettingsLib turn into "charging rapidly" above
+ *    config_chargingFastThreshold (7.5 W), taking 5 V when voltage_max is
+ *    missing. Values far outside microamps and microvolts are ignored rather
+ *    than trusted: the Galaxy A3 2015's rt5033-charger reports current_max=700
+ *    and voltage_max=112.
+ *
+ * The battery's charge_type ("Fast", "Trickle", "Standard") is NOT used: it
+ * is the charging phase (constant current versus trickle), and reads "Fast"
+ * on any charger.
+ */
+static const char *const fast_types[] = {
+    "USB_HVDCP", "USB_HVDCP_3", "USB_HVDCP_3P5", "USB_PD", "USB_PD_DRP",
+    "PD", "PD_DRP", "PD_PPS", NULL
+};
+
+int power_fast_type(const char *type)
+{
+    for (int i = 0; fast_types[i]; i++)
+        if (!strcmp(type, fast_types[i]))
+            return 1;
+    return 0;
+}
+
+int power_usb_type_fast(const char *usb_type)
+{
+    const char *open = strchr(usb_type, '['), *close;
+    char active[32];
+    size_t n;
+
+    if (!open || !(close = strchr(open, ']')))
+        return 0;
+    n = (size_t)(close - open - 1);
+    if (n == 0 || n >= sizeof(active))
+        return 0;
+    memcpy(active, open + 1, n);
+    active[n] = 0;
+    return power_fast_type(active);
+}
+
+long long power_max_uw(long long current_max_ua, long long voltage_max_uv)
+{
+    /* 100 mA .. 20 A and 3 V .. 48 V, the span of real USB/wireless/DC
+     * chargers in micro-units; anything else is a driver in other units. */
+    if (current_max_ua < 100000 || current_max_ua > 20000000)
+        return -1;
+    if (voltage_max_uv <= 0)
+        voltage_max_uv = 5000000;
+    else if (voltage_max_uv < 3000000 || voltage_max_uv > 48000000)
+        return -1;
+    return current_max_ua / 1000 * (voltage_max_uv / 1000);
+}
+
+static long long read_ll(const char *path, long long def)
+{
+    char buf[32], *end;
+    long long v;
+
+    if (read_str(path, buf, sizeof(buf)) <= 0)
+        return def;
+    v = strtoll(buf, &end, 10);
+    return end == buf || *end ? def : v;
+}
+
+enum charge_speed power_charge_speed(long long fast_uw, char *why, size_t why_len)
+{
+    enum charge_speed speed = CHARGE_SPEED_UNKNOWN;
+    char dir[512];
+    const struct dirent *e;
+    DIR *d;
+
+    if (why && why_len)
+        why[0] = 0;
+    if (!root_path(dir, sizeof(dir), PSY) || !(d = opendir(dir)))
+        return CHARGE_SPEED_UNKNOWN;
+    while ((e = readdir(d)) && speed != CHARGE_SPEED_FAST) {
+        static const char *const type_attrs[] = { "real_type", "type", NULL };
+        char path[512], val[128];
+        long long uw;
+        if (e->d_name[0] == '.')
+            continue;
+        if (supply_type(e->d_name, val, sizeof(val)) > 0 && is_battery_type(val))
+            continue;
+        snprintf(path, sizeof(path), PSY "/%s/online", e->d_name);
+        if (read_int(path, 0) <= 0)
+            continue;
+        speed = CHARGE_SPEED_NORMAL;
+        for (int i = 0; type_attrs[i]; i++) {
+            snprintf(path, sizeof(path), PSY "/%s/%s", e->d_name, type_attrs[i]);
+            if (read_str(path, val, sizeof(val)) > 0 && power_fast_type(val)) {
+                if (why && why_len)
+                    snprintf(why, why_len, "%s %s=%s", e->d_name, type_attrs[i], val);
+                speed = CHARGE_SPEED_FAST;
+                break;
+            }
+        }
+        if (speed == CHARGE_SPEED_FAST)
+            break;
+        snprintf(path, sizeof(path), PSY "/%s/usb_type", e->d_name);
+        if (read_str(path, val, sizeof(val)) > 0 && power_usb_type_fast(val)) {
+            if (why && why_len)
+                snprintf(why, why_len, "%s usb_type=%s", e->d_name, val);
+            speed = CHARGE_SPEED_FAST;
+            break;
+        }
+        snprintf(path, sizeof(path), PSY "/%s/current_max", e->d_name);
+        {
+            long long ua = read_ll(path, -1);
+            snprintf(path, sizeof(path), PSY "/%s/voltage_max", e->d_name);
+            uw = power_max_uw(ua, read_ll(path, -1));
+        }
+        if (uw > fast_uw) {
+            if (why && why_len)
+                snprintf(why, why_len, "%s offers %lld mW", e->d_name, uw / 1000);
+            speed = CHARGE_SPEED_FAST;
+        }
+    }
+    closedir(d);
+    return speed;
 }
 
 int power_capacity(void)

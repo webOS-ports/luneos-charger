@@ -17,7 +17,10 @@
  *     the battery is below --min-capacity;
  *   - unplugging the charger exits EXIT_POWEROFF after a grace period;
  *   - the notification LED, if there is one, is red while charging and green
- *     when charged.
+ *     when charged;
+ *   - on a fast charger (Quick Charge, USB PD, or more than 7.5 W offered;
+ *     see power_charge_speed()) the label says so, a bolt sits in the battery
+ *     and the band sweeps twice as fast.
  *
  * Without a usable display it carries on headless (LED, power key, unplug).
  * Without a power key there would be no way out but unplugging, so it exits
@@ -52,6 +55,7 @@
 #define FRAME_MS 33             /* ~30 fps while animating */
 #define POLL_MS 500             /* charger and battery state */
 #define CYCLE_MS 1600           /* one sweep of the charging band */
+#define FAST_CYCLE_MS 800       /* ... on a fast charger */
 
 struct opts {
     struct policy_config policy;
@@ -62,6 +66,7 @@ struct opts {
     int rotate;
     int animate;
     int level;                  /* fake gauge capacity, for testing */
+    long long fast_uw;          /* above this a charger is "fast" */
     int no_leds;
 };
 
@@ -78,6 +83,7 @@ static void usage(void)
             "  --unplug ms                     unplugged grace before power off (10000)\n"
             "  --discovery ms                  wait for the charger to appear (15000)\n"
             "  --min-capacity n                gauge %% needed to boot (none)\n"
+            "  --fast-watts n                  a charger offering more is fast (7.5)\n"
             "  --backlight file --brightness n panel backlight and its level\n"
             "  --led-red dir --led-green dir --led-blue dir --no-leds\n"
             "  --assets dir                    artwork (" ASSET_DIR ")\n"
@@ -117,6 +123,7 @@ static void parse_args(int argc, char **argv, struct opts *o, int *detect)
         else if (!strcmp(a, "--unplug")) o->policy.unplug_ms = parse_int(v, 0, 3600000);
         else if (!strcmp(a, "--discovery")) o->policy.discovery_ms = parse_int(v, 0, 3600000);
         else if (!strcmp(a, "--min-capacity")) o->policy.boot_min_capacity = parse_int(v, -1, 100);
+        else if (!strcmp(a, "--fast-watts")) o->fast_uw = (long long)parse_int(v, 1, 1000) * 1000000;
         else if (!strcmp(a, "--backlight")) o->backlight = v;
         else if (!strcmp(a, "--brightness")) o->brightness = parse_int(v, 0, INT_MAX);
         else if (!strcmp(a, "--led-red")) leds_override(LED_RED, v);
@@ -194,16 +201,18 @@ int main(int argc, char **argv)
         .brightness = -1,
         .animate = 1,
         .level = -1,
+        .fast_uw = POWER_FAST_UW_DEFAULT,
     };
     static struct state st;
     enum charger_state charger;
+    enum charge_speed speed;
+    char why[96];
     long long start, polled;
     int detect = 0, capacity, full, ret;
 
     parse_args(argc, argv, &o, &detect);
 
     if (detect) {
-        char why[128];
         int yes = detect_charger_boot(why, sizeof(why));
         printf("%s%s%s\n", yes ? "charger boot" : "normal boot",
                why[0] ? ": " : "", why);
@@ -240,6 +249,9 @@ int main(int argc, char **argv)
     policy_init(&st.policy, &o.policy, start);
     st.screen = -1;
     charger = power_charger();
+    speed = power_charge_speed(o.fast_uw, why, sizeof(why));
+    if (speed == CHARGE_SPEED_FAST)
+        log_msg("fast charger: %s", why);
     capacity = read_capacity(&o);
     full = read_full(&o, capacity);
     log_msg("battery %d%% (gauge %d%%) %s, charger %s",
@@ -254,8 +266,14 @@ int main(int argc, char **argv)
             enum charger_state c = power_charger();
             int cap = read_capacity(&o), f = read_full(&o, cap);
             polled = t;
+            enum charge_speed sp = power_charge_speed(o.fast_uw, why, sizeof(why));
             if (c != charger)
                 log_msg("charger %s", charger_name(c));
+            if (sp != speed && sp == CHARGE_SPEED_FAST)
+                log_msg("fast charger: %s", why);
+            else if (sp != speed && speed == CHARGE_SPEED_FAST)
+                log_msg("no longer a fast charger");
+            speed = sp;
             if (cap != capacity || f != full)
                 log_msg("battery %d%% (gauge %d%%) %s", power_ui_percent(cap),
                         cap, f ? "full" : "charging");
@@ -281,11 +299,13 @@ int main(int argc, char **argv)
         if (wait > POLL_MS)
             wait = POLL_MS;
         if (st.have_display && st.screen) {
+            int fast = speed == CHARGE_SPEED_FAST && charger != CHARGER_OFFLINE;
+            int cycle = fast ? FAST_CYCLE_MS : CYCLE_MS;
             struct scene sc = {
-                power_ui_percent(capacity), full,
+                power_ui_percent(capacity), full, fast,
                 policy_message(&st.policy, t),
             };
-            int phase = (int)((t - start) % CYCLE_MS) * 1000 / CYCLE_MS;
+            int phase = (int)((t - start) % cycle) * 1000 / cycle;
             int drawn = renderer_frame(&st.rend, &sc, phase);
             if (drawn >= 0) {
                 if (drawn)

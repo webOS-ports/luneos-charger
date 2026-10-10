@@ -111,4 +111,88 @@ TEST(Power, FullSignals)
     EXPECT_FALSE(power_full(80));
 }
 
+TEST(PowerSpeed, Types)
+{
+    EXPECT_TRUE(power_fast_type("USB_HVDCP"));
+    EXPECT_TRUE(power_fast_type("USB_HVDCP_3"));
+    EXPECT_TRUE(power_fast_type("USB_PD"));
+    EXPECT_TRUE(power_fast_type("PD_PPS"));
+    EXPECT_FALSE(power_fast_type("USB"));
+    EXPECT_FALSE(power_fast_type("USB_DCP"));
+    EXPECT_FALSE(power_fast_type("Mains"));
+    EXPECT_FALSE(power_fast_type(""));
+    EXPECT_TRUE(power_usb_type_fast("Unknown SDP DCP CDP C PD [PD_PPS]"));
+    EXPECT_TRUE(power_usb_type_fast("SDP [PD] DCP"));
+    EXPECT_FALSE(power_usb_type_fast("[DCP] PD PD_PPS"));   // offered, not active
+    EXPECT_FALSE(power_usb_type_fast("SDP DCP PD"));
+    EXPECT_FALSE(power_usb_type_fast("[] PD"));
+    EXPECT_FALSE(power_usb_type_fast("[PD"));
+}
+
+TEST(PowerSpeed, MaxPower)
+{
+    // Android's formula: mA x mV, 5 V when the voltage is unknown.
+    EXPECT_EQ(power_max_uw(1500000, 5000000), 7500000);
+    EXPECT_EQ(power_max_uw(2000000, -1), 10000000);
+    EXPECT_EQ(power_max_uw(3000000, 9000000), 27000000);
+    // Not micro-units: the A3's rt5033-charger says 700 and 112.
+    EXPECT_EQ(power_max_uw(700, 112), -1);
+    EXPECT_EQ(power_max_uw(2000000, 112), -1);
+    EXPECT_EQ(power_max_uw(700, 5000000), -1);   // current in mA
+    EXPECT_EQ(power_max_uw(0, 5000000), -1);
+    EXPECT_EQ(power_max_uw(99999999, 5000000), -1);
+}
+
+TEST(PowerSpeed, FromSysfs)
+{
+    char why[96];
+    {
+        FakeTree t;     // nothing online
+        supply(t, "usb", "USB", "0");
+        EXPECT_EQ(power_charge_speed(POWER_FAST_UW_DEFAULT, why, sizeof(why)),
+                  CHARGE_SPEED_UNKNOWN);
+    }
+    {
+        FakeTree t;     // the Galaxy A3 2015 on a USB port
+        supply(t, "battery", "Battery", "4");
+        t.write(PSY + "battery/charge_type", "Fast\n");    // the phase, ignored
+        supply(t, "usb", "USB", "1");
+        supply(t, "rt5033-charger", "Unknown", "1");
+        t.write(PSY + "rt5033-charger/current_max", "700\n");
+        t.write(PSY + "rt5033-charger/voltage_max", "112\n");
+        EXPECT_EQ(power_charge_speed(POWER_FAST_UW_DEFAULT, why, sizeof(why)),
+                  CHARGE_SPEED_NORMAL);
+    }
+    {
+        FakeTree t;     // downstream Qualcomm on Quick Charge 3
+        supply(t, "usb", "USB", "1");
+        t.write(PSY + "usb/real_type", "USB_HVDCP_3\n");
+        EXPECT_EQ(power_charge_speed(POWER_FAST_UW_DEFAULT, why, sizeof(why)),
+                  CHARGE_SPEED_FAST);
+        EXPECT_STREQ(why, "usb real_type=USB_HVDCP_3");
+    }
+    {
+        FakeTree t;     // mainline Type-C on PD
+        supply(t, "tcpm-source-psy", "USB", "1");
+        t.write(PSY + "tcpm-source-psy/usb_type", "C [PD] PD_PPS\n");
+        EXPECT_EQ(power_charge_speed(POWER_FAST_UW_DEFAULT, nullptr, 0),
+                  CHARGE_SPEED_FAST);
+    }
+    {
+        FakeTree t;     // by power: 9 V 2 A is fast, 5 V 1.5 A is not
+        supply(t, "usb", "USB", "1");
+        t.write(PSY + "usb/current_max", "2000000\n");
+        t.write(PSY + "usb/voltage_max", "9000000\n");
+        EXPECT_EQ(power_charge_speed(POWER_FAST_UW_DEFAULT, why, sizeof(why)),
+                  CHARGE_SPEED_FAST);
+        EXPECT_STREQ(why, "usb offers 18000 mW");
+        t.write(PSY + "usb/current_max", "1500000\n");
+        t.write(PSY + "usb/voltage_max", "5000000\n");
+        EXPECT_EQ(power_charge_speed(POWER_FAST_UW_DEFAULT, why, sizeof(why)),
+                  CHARGE_SPEED_NORMAL);     // 7.5 W is not above 7.5 W
+        EXPECT_EQ(power_charge_speed(5000000, why, sizeof(why)),
+                  CHARGE_SPEED_FAST);       // --fast-watts 5
+    }
+}
+
 } // namespace

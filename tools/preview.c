@@ -3,7 +3,7 @@
  * luneos-charger-preview - render the charging screen to a PNG, with the same
  * layout and drawing code the device uses, for a given panel size and state.
  *
- *   luneos-charger-preview <w> <h> <level> <full> <msg> <phase> <out.png>
+ *   luneos-charger-preview <w> <h> <level> <full> <msg> <phase> <out.png> [fast]
  *
  * msg: none, unplugged or too_low. level -1 draws no percentage. Not
  * installed; for reviewing the layout on panels nobody has to hand.
@@ -28,8 +28,8 @@ int main(int argc, char **argv)
     unsigned char *rgb;
     int w, h, phase;
 
-    if (argc != 8) {
-        fprintf(stderr, "usage: %s w h level full none|unplugged|too_low phase out.png\n",
+    if (argc != 8 && argc != 9) {
+        fprintf(stderr, "usage: %s w h level full none|unplugged|too_low phase out.png [fast]\n",
                 argv[0]);
         return 2;
     }
@@ -37,6 +37,7 @@ int main(int argc, char **argv)
     h = atoi(argv[2]);
     sc.level = atoi(argv[3]);
     sc.full = atoi(argv[4]);
+    sc.fast = argc == 9 && !strcmp(argv[8], "fast");
     sc.msg = !strcmp(argv[5], "unplugged") ? POLICY_MSG_UNPLUGGED :
              !strcmp(argv[5], "too_low") ? POLICY_MSG_TOO_LOW : POLICY_MSG_NONE;
     phase = atoi(argv[6]);

@@ -13,7 +13,7 @@
 static const char *const sprite_names[SPR_N] = {
     "glyph_0", "glyph_1", "glyph_2", "glyph_3", "glyph_4",
     "glyph_5", "glyph_6", "glyph_7", "glyph_8", "glyph_9", "glyph_pct",
-    "charging", "charged", "hint", "unplugged", "too_low",
+    "charging", "charged", "fast", "hint", "unplugged", "too_low",
 };
 
 /* A non-negative decimal of at most five digits (the atlas is far smaller),
@@ -137,8 +137,8 @@ void art_free(struct art *a)
 #define NUB_W 128
 #define NUB_H 37
 #define NUB_R 13
-#define GLYPH_H 273
-#define LABEL_H 79
+#define GLYPH_H 258
+#define LABEL_H 75
 #define HINT_H 60
 
 void layout_compute(int w, int h, int glyph_h, struct layout *L)
@@ -345,6 +345,52 @@ static void draw_percent(struct renderer *r, int level, int cx, int y0,
     draw_sprite(r, &r->art.spr[SPR_PCT], x, y0, c);
 }
 
+/*
+ * The lightning bolt shown inside the battery on a fast charger, as a
+ * polygon in the unit square (x right, y down), rasterised once into a
+ * coverage mask with 4 x 4 samples per pixel.
+ */
+static const double bolt_pts[][2] = {
+    { 0.62, 0.00 }, { 0.14, 0.58 }, { 0.46, 0.58 },
+    { 0.38, 1.00 }, { 0.86, 0.42 }, { 0.54, 0.42 },
+};
+#define BOLT_N (sizeof(bolt_pts) / sizeof(bolt_pts[0]))
+
+static int in_bolt(double x, double y)
+{
+    int in = 0;
+
+    for (size_t i = 0, j = BOLT_N - 1; i < BOLT_N; j = i++) {
+        double xi = bolt_pts[i][0], yi = bolt_pts[i][1];
+        double xj = bolt_pts[j][0], yj = bolt_pts[j][1];
+        if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+            in = !in;
+    }
+    return in;
+}
+
+static int make_bolt(struct image *b, int w, int h)
+{
+    memset(b, 0, sizeof(*b));
+    if (w <= 0 || h <= 0)
+        return -1;
+    b->px = calloc((size_t)w * h, 1);
+    if (!b->px)
+        return -1;
+    b->w = w;
+    b->h = h;
+    b->bpp = 1;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            int n = 0;
+            for (int sy = 0; sy < 4; sy++)
+                for (int sx = 0; sx < 4; sx++)
+                    n += in_bolt((x + (sx + 0.5) / 4) / w, (y + (sy + 0.5) / 4) / h);
+            b->px[(size_t)y * w + x] = (unsigned char)(n * 255 / 16);
+        }
+    return 0;
+}
+
 int renderer_init(struct renderer *r, int w, int h, struct art *design,
                   int animate)
 {
@@ -365,6 +411,12 @@ int renderer_init(struct renderer *r, int w, int h, struct art *design,
         log_msg("cannot scale the artwork; drawing without it");
     }
     art_free(design);
+    {
+        /* Half the interior's width, a little over half its height. */
+        int inset = r->L.bat_edge + r->L.bat_gap;
+        int iw = r->L.bat_w - 2 * inset, ih = r->L.bat_h - 2 * inset;
+        make_bolt(&r->bolt, iw / 2, ih * 11 / 20);
+    }
     log_msg("layout: %dx%d %s, scale %.3f", w, h,
             r->L.landscape ? "landscape" : "portrait", r->L.s);
     return 0;
@@ -379,6 +431,7 @@ void renderer_free(struct renderer *r)
 {
     free(r->canvas);
     art_free(&r->art);
+    image_free(&r->bolt);
     memset(r, 0, sizeof(*r));
 }
 
@@ -395,7 +448,8 @@ int renderer_frame(struct renderer *r, const struct scene *sc, int phase)
     uint32_t outline = rgb(0xd8, 0xe2, 0xee), label = rgb(0xa8, 0xb8, 0xcc);
 
     if (!r->have_last || r->last.level != sc->level ||
-        r->last.full != sc->full || r->last.msg != sc->msg) {
+        r->last.full != sc->full || r->last.fast != sc->fast ||
+        r->last.msg != sc->msg) {
         const struct image *msg = NULL;
         r->last = *sc;
         r->have_last = 1;
@@ -411,7 +465,8 @@ int renderer_frame(struct renderer *r, const struct scene *sc, int phase)
         fill_rrect(r, L->nub_x, L->nub_y, L->nub_w, L->nub_h, L->nub_r, outline);
         if (sc->level >= 0)
             draw_percent(r, sc->level, L->text_cx, L->pct_y, rgb(0xff, 0xff, 0xff));
-        draw_centred(r, &r->art.spr[sc->full ? SPR_CHARGED : SPR_CHARGING],
+        draw_centred(r, &r->art.spr[sc->full ? SPR_CHARGED :
+                                    sc->fast ? SPR_FAST : SPR_CHARGING],
                      L->text_cx, L->label_y, label);
         if (sc->msg == POLICY_MSG_UNPLUGGED)
             msg = &r->art.spr[SPR_UNPLUGGED];
@@ -456,5 +511,9 @@ int renderer_frame(struct renderer *r, const struct scene *sc, int phase)
         for (int x = ix; x < ix + iw; x++)
             plot(r, x, y, c, rrect_cov(x, y, ix, iy, iw, ih, ir));
     }
+    /* A fast charger: a white bolt over the charge, centred. */
+    if (sc->fast && !sc->full && r->bolt.px)
+        draw_sprite(r, &r->bolt, ix + (iw - r->bolt.w) / 2,
+                    iy + (ih - r->bolt.h) / 2, rgb(0xff, 0xff, 0xff));
     return full_redraw;
 }
