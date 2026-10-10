@@ -17,7 +17,8 @@ const std::vector<std::pair<int, int>> panels = {
     { 480, 800 }, { 540, 960 }, { 720, 1280 }, { 768, 1024 }, { 1080, 1620 },
     { 1080, 1920 }, { 1080, 2340 }, { 1440, 3040 }, { 1440, 3200 },
     { 800, 1280 }, { 1024, 768 }, { 1280, 800 }, { 1920, 1200 }, { 2000, 1200 },
-    { 1080, 1080 }, { 320, 480 },
+    { 1080, 1080 }, { 320, 480 }, { 720, 720 }, { 716, 720 }, { 1430, 1440 },
+    { 800, 600 }, { 1024, 600 }, { 1080, 1620 }, { 720, 1600 }, { 800, 1340 },
 };
 
 // The committed artwork: ASSETS_SRC (set by meson), or $ASSETS_DIR when the
@@ -40,16 +41,26 @@ TEST(Layout, EverythingFitsOnEveryPanel)
         layout_compute(w, h, 0, &L);
         SCOPED_TRACE(std::to_string(w) + "x" + std::to_string(h));
         EXPECT_GT(L.s, 0.0);
-        EXPECT_EQ(L.landscape, w > h);
+        bool square = w * 4 <= h * 5 && h * 4 <= w * 5;
+        EXPECT_EQ(L.square, square);
+        EXPECT_EQ(L.landscape, w > h && !square);
         EXPECT_TRUE(inside(L.logo_x, L.logo_y, L.logo_size, L.logo_size, w, h));
         EXPECT_TRUE(inside(L.bat_x, L.bat_y, L.bat_w, L.bat_h, w, h));
         EXPECT_TRUE(inside(L.nub_x, L.nub_y, L.nub_w, L.nub_h, w, h));
-        // Nothing overlaps vertically in the battery's column.
-        EXPECT_LE(L.bat_y + L.bat_h, L.pct_y);
+        // Nothing overlaps: the percentage is under the battery, or beside it
+        // on a square panel.
+        if (L.square) {
+            EXPECT_GT(L.text_cx - L.s * 260, L.bat_x + L.bat_w);
+            EXPECT_GE(L.pct_y, L.bat_y);
+            EXPECT_LE(L.label_y, L.bat_y + L.bat_h);
+            EXPECT_LE(L.bat_y + L.bat_h, L.hint_y);
+        } else {
+            EXPECT_LE(L.bat_y + L.bat_h, L.pct_y);
+        }
         EXPECT_LT(L.pct_y, L.label_y);
         EXPECT_LT(L.label_y, L.hint_y);
         EXPECT_LT(L.hint_y, h);
-        if (!L.landscape) {
+        if (!L.landscape && !L.square) {
             EXPECT_LE(L.logo_y + L.logo_size, L.nub_y);
         }
         // The battery's interior survives the inset.

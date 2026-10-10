@@ -33,6 +33,14 @@ executable('luneos-charger', 'src/main.c',
   install : true,
   install_dir : get_option('sbindir'))
 
+# Renders the screen to a PNG for any panel size; not installed.
+executable('luneos-charger-preview', 'tools/preview.c',
+  c_args : ['-DASSETS_SRC="' + meson.project_source_root() / 'assets' + '"'],
+  include_directories : include_directories('src'),
+  link_with : core,
+  dependencies : [png, m],
+  install : false)
+
 install_data('assets/logo.png', 'assets/text.png', 'assets/text.idx',
   install_dir : asset_dir)
 

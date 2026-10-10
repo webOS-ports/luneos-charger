@@ -138,6 +138,7 @@ void art_free(struct art *a)
 #define NUB_H 37
 #define NUB_R 13
 #define GLYPH_H 273
+#define LABEL_H 79
 #define HINT_H 60
 
 void layout_compute(int w, int h, int glyph_h, struct layout *L)
@@ -148,8 +149,18 @@ void layout_compute(int w, int h, int glyph_h, struct layout *L)
     if (glyph_h <= 0)
         glyph_h = GLYPH_H;
     memset(L, 0, sizeof(*L));
-    L->landscape = w > h;
-    if (L->landscape) {
+    L->square = w * 4 <= h * 5 && h * 4 <= w * 5;
+    L->landscape = w > h && !L->square;
+    if (L->square) {
+        /* Logo on top, battery and percentage side by side under it: the
+         * portrait stack would leave a square panel mostly empty. */
+        dw = dh = DESIGN_SQ;
+        logo_cx = DESIGN_SQ / 2;
+        logo_y = 110;
+        col_cx = DESIGN_SQ / 2 - 260;
+        bat_y = 640;
+        hint_y = DESIGN_SQ - 110 - HINT_H;
+    } else if (L->landscape) {
         /* Logo on the left, battery and percentage on the right. */
         dw = DESIGN_LW;
         dh = DESIGN_LH;
@@ -190,9 +201,18 @@ void layout_compute(int w, int h, int glyph_h, struct layout *L)
     L->nub_x = X(col_cx) - L->nub_w / 2;
     /* The nub tucks under the body's top edge by half the edge width. */
     L->nub_y = L->bat_y - L->nub_h + L->bat_edge / 2;
-    L->text_cx = X(col_cx);
-    L->pct_y = Y(bat_y + BAT_H + 50);
-    L->label_y = Y(bat_y + BAT_H + 50 + glyph_h + 20);
+    if (L->square) {
+        /* Percentage and label centred on the battery's height, to its
+         * right. */
+        int text_y = bat_y + (BAT_H - glyph_h - 20 - LABEL_H) / 2;
+        L->text_cx = X(DESIGN_SQ / 2 + 300);
+        L->pct_y = Y(text_y);
+        L->label_y = Y(text_y + glyph_h + 20);
+    } else {
+        L->text_cx = X(col_cx);
+        L->pct_y = Y(bat_y + BAT_H + 50);
+        L->label_y = Y(bat_y + BAT_H + 50 + glyph_h + 20);
+    }
     L->hint_cx = X(dw / 2.0);
     L->hint_y = Y(hint_y);
 #undef X

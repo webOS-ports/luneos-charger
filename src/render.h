@@ -14,7 +14,9 @@ extern "C" {
 
 /*
  * The screen is designed once, on a reference canvas of DESIGN_W x DESIGN_H
- * design pixels (portrait) or DESIGN_LW x DESIGN_LH (landscape), and scaled
+ * design pixels (portrait), DESIGN_LW x DESIGN_LH (landscape) or DESIGN_SQ
+ * square (panels within 5:4 of square, with the percentage beside the
+ * battery rather than under it), and scaled
  * uniformly to fit the panel, centred: the logo and text take the same share
  * of the screen on a 540x960 panel as on a 1440x3200 one. The artwork is
  * pre-rendered at twice design size (tools/gen_assets.py) and resampled down
@@ -24,6 +26,7 @@ extern "C" {
 #define DESIGN_H 2400
 #define DESIGN_LW 2560
 #define DESIGN_LH 1440
+#define DESIGN_SQ 1700      /* near-square panels (q25, Titan): 1700 x 1700 */
 
 enum sprite_id {
     SPR_DIGIT0, SPR_DIGIT9 = SPR_DIGIT0 + 9, SPR_PCT,
@@ -55,6 +58,7 @@ void art_free(struct art *a);
 struct layout {
     double s;                       /* design pixels -> panel pixels */
     int landscape;
+    int square;                     /* percentage beside the battery */
     int logo_x, logo_y, logo_size;
     int bat_x, bat_y, bat_w, bat_h, bat_edge, bat_gap, bat_r;
     int nub_x, nub_y, nub_w, nub_h, nub_r;
