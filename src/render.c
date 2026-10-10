@@ -37,14 +37,15 @@ static const char *parse_num(const char *s, int *out)
 int art_parse_idx_line(const char *line, struct rect *r)
 {
     size_t len = strcspn(line, " ");
-    int *fields[] = { &r->x, &r->y, &r->w, &r->h };
     const char *p = line + len;
+    int v[4];
 
     for (int i = 0; i < 4; i++)
-        if (!(p = parse_num(p, fields[i])))
+        if (!(p = parse_num(p, &v[i])))
             return -1;
-    if (r->w <= 0 || r->h <= 0)
+    if (v[2] <= 0 || v[3] <= 0)
         return -1;
+    *r = (struct rect){ v[0], v[1], v[2], v[3] };
     for (int i = 0; i < SPR_N; i++)
         if (strlen(sprite_names[i]) == len && !strncmp(line, sprite_names[i], len))
             return i;
@@ -205,7 +206,7 @@ void layout_compute(int w, int h, int glyph_h, struct layout *L)
         /* Percentage and label centred on the battery's height, to its
          * right. */
         int text_y = bat_y + (BAT_H - glyph_h - 20 - LABEL_H) / 2;
-        L->text_cx = X(DESIGN_SQ / 2 + 300);
+        L->text_cx = X(DESIGN_SQ / 2.0 + 300);
         L->pct_y = Y(text_y);
         L->label_y = Y(text_y + glyph_h + 20);
     } else {

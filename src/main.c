@@ -264,9 +264,9 @@ int main(int argc, char **argv)
 
         if (t - polled >= POLL_MS) {
             enum charger_state c = power_charger();
+            enum charge_speed sp = power_charge_speed(o.fast_uw, why, sizeof(why));
             int cap = read_capacity(&o), f = read_full(&o, cap);
             polled = t;
-            enum charge_speed sp = power_charge_speed(o.fast_uw, why, sizeof(why));
             if (c != charger)
                 log_msg("charger %s", charger_name(c));
             if (sp != speed && sp == CHARGE_SPEED_FAST)
