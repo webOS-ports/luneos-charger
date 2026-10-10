@@ -36,7 +36,7 @@ static int max_for(const char *brightness_path)
 int backlight_find(const char *node, int level)
 {
     char dir[512];
-    struct dirent *e;
+    const struct dirent *e;
     DIR *d;
 
     bl_path[0] = 0;

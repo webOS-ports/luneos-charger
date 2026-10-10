@@ -62,8 +62,9 @@ void display_close(struct display *d)
     memset(d, 0, sizeof(*d));
 }
 
-uint32_t display_pack(uint32_t rgb, const struct pixel_format *f)
+uint32_t display_pack(uint32_t rgb, const struct pixel_format *fmt)
 {
+    const struct pixel_format *f = fmt;
     uint32_t r = rgb >> 16 & 0xff, g = rgb >> 8 & 0xff, b = rgb & 0xff;
     uint32_t v = (r >> (8 - f->r_len)) << f->r_off |
                  (g >> (8 - f->g_len)) << f->g_off |
@@ -95,8 +96,9 @@ static inline void put(uint8_t *p, uint32_t v, int bytes)
 
 void display_blit(const struct display *d, const uint32_t *canvas,
                   const struct rect *r, uint8_t *dst, int dst_stride,
-                  const struct pixel_format *f)
+                  const struct pixel_format *fmt)
 {
+    const struct pixel_format *f = fmt;
     int x0 = r->x < 0 ? 0 : r->x, y0 = r->y < 0 ? 0 : r->y;
     int x1 = r->x + r->w > d->w ? d->w : r->x + r->w;
     int y1 = r->y + r->h > d->h ? d->h : r->y + r->h;

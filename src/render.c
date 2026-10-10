@@ -16,15 +16,37 @@ static const char *const sprite_names[SPR_N] = {
     "charging", "charged", "hint", "unplugged", "too_low",
 };
 
+/* A non-negative decimal of at most five digits (the atlas is far smaller),
+ * followed by a space or the end of the line. */
+static const char *parse_num(const char *s, int *out)
+{
+    char *end;
+    long v;
+
+    while (*s == ' ')
+        s++;
+    if (*s < '0' || *s > '9')
+        return NULL;
+    v = strtol(s, &end, 10);
+    if (end - s > 5 || (*end && *end != ' ' && *end != '\n'))
+        return NULL;
+    *out = (int)v;
+    return end;
+}
+
 int art_parse_idx_line(const char *line, struct rect *r)
 {
-    char name[32];
+    size_t len = strcspn(line, " ");
+    int *fields[] = { &r->x, &r->y, &r->w, &r->h };
+    const char *p = line + len;
 
-    if (sscanf(line, "%31s %d %d %d %d", name, &r->x, &r->y, &r->w, &r->h) != 5 ||
-        r->x < 0 || r->y < 0 || r->w <= 0 || r->h <= 0)
+    for (int i = 0; i < 4; i++)
+        if (!(p = parse_num(p, fields[i])))
+            return -1;
+    if (r->w <= 0 || r->h <= 0)
         return -1;
     for (int i = 0; i < SPR_N; i++)
-        if (!strcmp(name, sprite_names[i]))
+        if (strlen(sprite_names[i]) == len && !strncmp(line, sprite_names[i], len))
             return i;
     return -1;
 }
@@ -171,7 +193,7 @@ void layout_compute(int w, int h, int glyph_h, struct layout *L)
     L->text_cx = X(col_cx);
     L->pct_y = Y(bat_y + BAT_H + 50);
     L->label_y = Y(bat_y + BAT_H + 50 + glyph_h + 20);
-    L->hint_cx = X(dw / 2);
+    L->hint_cx = X(dw / 2.0);
     L->hint_y = Y(hint_y);
 #undef X
 #undef Y

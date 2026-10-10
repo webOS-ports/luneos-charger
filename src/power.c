@@ -37,7 +37,7 @@ static int is_battery_type(const char *type)
 int power_find(void)
 {
     char dir[512];
-    struct dirent *e;
+    const struct dirent *e;
     DIR *d;
 
     bat_dir[0] = 0;
@@ -64,7 +64,7 @@ enum charger_state power_charger(void)
 {
     enum charger_state state = CHARGER_UNKNOWN;
     char dir[512];
-    struct dirent *e;
+    const struct dirent *e;
     DIR *d;
 
     if (!root_path(dir, sizeof(dir), PSY) || !(d = opendir(dir)))

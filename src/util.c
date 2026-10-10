@@ -13,14 +13,9 @@
 
 static char root[256];
 
-void util_set_root(const char *r)
+void util_set_root(const char *path)
 {
-    snprintf(root, sizeof(root), "%s", r ? r : "");
-}
-
-const char *util_root(void)
-{
-    return root;
+    snprintf(root, sizeof(root), "%s", path ? path : "");
 }
 
 char *root_path(char *buf, size_t len, const char *path)

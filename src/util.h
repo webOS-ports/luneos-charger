@@ -13,8 +13,7 @@ extern "C" {
  * the whole program at a fake tree (util_set_root("/path/to/fake")). On a
  * device the root is "" and paths are used as they are.
  */
-void util_set_root(const char *root);
-const char *util_root(void);
+void util_set_root(const char *path);
 
 /* "<root><path>" into buf; returns buf, or NULL if it did not fit. */
 char *root_path(char *buf, size_t len, const char *path);

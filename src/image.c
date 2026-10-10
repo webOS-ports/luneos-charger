@@ -45,7 +45,7 @@ int image_load_png(const char *path, int bpp, struct image *img)
     /* PNG_FORMAT_RGBA with PNG_FORMAT_FLAG_ASSOCIATED_ALPHA would premultiply
      * in linear light; blending here is in sRGB, so premultiply below. */
     png.format = bpp == 1 ? PNG_FORMAT_GRAY : PNG_FORMAT_RGBA;
-    size = PNG_IMAGE_SIZE(png);
+    size = (size_t)png.width * png.height * (size_t)bpp;
     img->px = malloc(size);
     if (!img->px) {
         png_image_free(&png);

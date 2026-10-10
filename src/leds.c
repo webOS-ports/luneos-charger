@@ -19,7 +19,6 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "util.h"
 
@@ -89,19 +88,19 @@ int leds_rank(const char *name)
 int leds_find(void)
 {
     char dir[512];
-    struct dirent *e;
+    const struct dirent *e;
     DIR *d;
     int found = 0;
 
     if (!root_path(dir, sizeof(dir), LEDS) || !(d = opendir(dir)))
         return 0;
     while ((e = readdir(d))) {
-        char path[512], full[768];
+        char path[512], idx[96];
         int rank;
         if (e->d_name[0] == '.' || !(rank = leds_rank(e->d_name)))
             continue;
         snprintf(path, sizeof(path), LEDS "/%s/multi_index", e->d_name);
-        if (root_path(full, sizeof(full), path) && access(full, F_OK) == 0) {
+        if (read_str(path, idx, sizeof(idx)) > 0) {
             if (!led_multi[0])
                 snprintf(led_multi, sizeof(led_multi), LEDS "/%s", e->d_name);
             continue;

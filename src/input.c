@@ -26,7 +26,7 @@ static int has_key(int fd, int code)
 
 int input_open_power_keys(struct input *in)
 {
-    struct dirent *e;
+    const struct dirent *e;
     DIR *d;
 
     memset(in, 0, sizeof(*in));

@@ -72,6 +72,12 @@ TEST(ArtIdx, ParseLine)
     EXPECT_EQ(art_parse_idx_line("hint -1 0 1 1", &r), -1);
     EXPECT_EQ(art_parse_idx_line("hint 0 0 1", &r), -1);
     EXPECT_EQ(art_parse_idx_line("", &r), -1);
+    // Out-of-range numbers are rejected, not undefined behaviour.
+    EXPECT_EQ(art_parse_idx_line("hint 0 0 99999999999999999999 1", &r), -1);
+    EXPECT_EQ(art_parse_idx_line("hint 0 0 123456 1", &r), -1);
+    EXPECT_EQ(art_parse_idx_line("hint 0 0 12x 1", &r), -1);
+    EXPECT_EQ(art_parse_idx_line("hin 0 0 1 1", &r), -1);
+    EXPECT_EQ(art_parse_idx_line("hintx 0 0 1 1", &r), -1);
 }
 
 // The committed artwork, as installed (ASSETS_SRC is set by meson).
