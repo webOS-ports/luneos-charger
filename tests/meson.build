@@ -8,5 +8,8 @@ foreach t : ['detect', 'power', 'leds', 'policy', 'image', 'render', 'display',
     cpp_args : ['-DASSETS_SRC="' + meson.project_source_root() / 'assets' + '"'],
     link_with : core,
     dependencies : [gtest, png, m])
-  test(t, exe, workdir : meson.current_build_dir(), protocol : 'gtest')
+  # Sanitizer builds (TSan especially) run the render suite several times
+  # slower than the 30 s default allows.
+  test(t, exe, workdir : meson.current_build_dir(), protocol : 'gtest',
+    timeout : 120)
 endforeach

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <utility>
@@ -58,6 +59,12 @@ TEST(Layout, EverythingFitsOnEveryPanel)
             EXPECT_LE(L.bat_y + L.bat_h, L.pct_y);
         }
         EXPECT_LT(L.pct_y, L.label_y);
+        EXPECT_LT(L.label_y, L.eta_y);
+        // The remaining-time line (80 design px) ends above the hint.
+        EXPECT_LE(L.eta_y + (int)(80 * L.s), L.hint_y);
+        if (L.square) {
+            EXPECT_LE(L.eta_y + (int)(80 * L.s), L.bat_y + L.bat_h + 1);
+        }
         EXPECT_LT(L.label_y, L.hint_y);
         EXPECT_LT(L.hint_y, h);
         if (!L.landscape && !L.square) {
@@ -87,6 +94,8 @@ TEST(ArtIdx, ParseLine)
     EXPECT_EQ(art_parse_idx_line("glyph_9 0 2457 114 273", &r), SPR_DIGIT9);
     EXPECT_EQ(art_parse_idx_line("too_low 0 1 2 3", &r), SPR_TOO_LOW);
     EXPECT_EQ(art_parse_idx_line("fast 0 1 2 3", &r), SPR_FAST);
+    EXPECT_EQ(art_parse_idx_line("t9 0 1 2 3", &r), SPR_T9);
+    EXPECT_EQ(art_parse_idx_line("t_space 0 1 2 3", &r), SPR_T_SPACE);
     EXPECT_EQ(art_parse_idx_line("unknown 0 0 1 1", &r), -1);
     EXPECT_EQ(art_parse_idx_line("hint 0 0 0 1", &r), -1);
     EXPECT_EQ(art_parse_idx_line("hint -1 0 1 1", &r), -1);
@@ -103,6 +112,8 @@ TEST(ArtIdx, ParseLine)
 TEST(Art, CommittedAssetsLoad)
 {
     struct art a;
+    // Every sprite, and so the whole atlas, loads: it must stay inside the
+    // loader's size limit as strings are added.
     ASSERT_EQ(art_load(&a, assets()), SPR_N);
     EXPECT_EQ(a.logo.w, 800);       // twice design size
     EXPECT_EQ(a.logo.bpp, 4);
@@ -129,7 +140,7 @@ TEST_P(Renderer, FramesOnEveryPanel)
     art_load(&design, assets());
     ASSERT_EQ(renderer_init(&r, w, h, &design, 1), 0);
 
-    struct scene sc = { 42, 0, 0, POLICY_MSG_NONE };
+    struct scene sc = { 42, 0, 0, -1, POLICY_MSG_NONE };
     EXPECT_EQ(renderer_frame(&r, &sc, 0), 1);       // first frame: all of it
     EXPECT_EQ(renderer_frame(&r, &sc, 500), 0);     // then the battery only
     EXPECT_TRUE(inside(r.dirty.x, r.dirty.y, r.dirty.w, r.dirty.h, w, h));
@@ -189,7 +200,7 @@ TEST(Renderer, BoltOnFastCharger)
     ASSERT_EQ(renderer_init(&r, 1080, 1920, &design, 0), 0);
     ASSERT_NE(r.bolt.px, nullptr);
     int cx = r.L.bat_x + r.L.bat_w / 2, cy = r.L.bat_y + r.L.bat_h / 2;
-    struct scene sc = { 90, 0, 0, POLICY_MSG_NONE };
+    struct scene sc = { 90, 0, 0, -1, POLICY_MSG_NONE };
     renderer_frame(&r, &sc, 0);
     uint32_t plain = r.canvas[(size_t)cy * 1080 + cx];
     sc.fast = 1;
@@ -215,12 +226,75 @@ TEST(Renderer, OnePercentIsVisible)
     int ih = r.L.bat_h - 2 * inset;
     int cx = r.L.bat_x + r.L.bat_w / 2;
     int y = r.L.bat_y + inset + ih - ih / 50;     // 2 % up from the bottom
-    struct scene sc = { 0, 0, 0, POLICY_MSG_NONE };
+    struct scene sc = { 0, 0, 0, -1, POLICY_MSG_NONE };
     renderer_frame(&r, &sc, 0);
     EXPECT_EQ(r.canvas[(size_t)y * 1080 + cx], 0u);    // 0 %: empty
     sc.level = 1;
     renderer_frame(&r, &sc, 0);
     EXPECT_NE(r.canvas[(size_t)y * 1080 + cx], 0u);    // 1 %: visible
+    renderer_free(&r);
+}
+
+static bool any_lit(const struct renderer &r, int x0, int y0, int w, int h)
+{
+    for (int y = y0; y < y0 + h; y++)
+        for (int x = x0; x < x0 + w; x++)
+            if (x >= 0 && y >= 0 && x < r.w && y < r.h && r.canvas[(size_t)y * r.w + x])
+                return true;
+    return false;
+}
+
+// "Full in ..." appears under the label when there is an estimate, and not
+// when there is none or the battery is charged.
+TEST(Renderer, RemainingTimeLine)
+{
+    struct art design;
+    struct renderer r;
+    art_load(&design, assets());
+    ASSERT_EQ(renderer_init(&r, 1080, 1920, &design, 0), 0);
+    int band_h = (int)(80 * r.L.s);
+    struct scene sc = { 42, 0, 0, -1, POLICY_MSG_NONE };
+    renderer_frame(&r, &sc, 0);
+    EXPECT_FALSE(any_lit(r, 0, r.L.eta_y, r.w, band_h));
+    for (int m : { 1, 35, 60, 80, 600 }) {
+        sc.eta_min = m;
+        EXPECT_EQ(renderer_frame(&r, &sc, 0), 1) << m;
+        EXPECT_TRUE(any_lit(r, 0, r.L.eta_y, r.w, band_h)) << m;
+    }
+    // Zero minutes reads as "Full in 1 min", never a bare "Full in".
+    sc.eta_min = 1;
+    renderer_frame(&r, &sc, 0);
+    std::vector<uint32_t> one(r.canvas, r.canvas + (size_t)r.w * r.h);
+    sc.eta_min = 0;
+    renderer_frame(&r, &sc, 0);
+    EXPECT_TRUE(std::equal(one.begin(), one.end(), r.canvas));
+    sc.full = 1;
+    sc.level = 100;
+    renderer_frame(&r, &sc, 0);
+    EXPECT_FALSE(any_lit(r, 0, r.L.eta_y, r.w, band_h));
+    renderer_free(&r);
+}
+
+// Charged is green, from the status bar's battery-charged.png: the middle
+// of the interior has no red and more green than blue; charging is blue.
+TEST(Renderer, ChargedIsGreen)
+{
+    struct art design;
+    struct renderer r;
+    art_load(&design, assets());
+    ASSERT_EQ(renderer_init(&r, 1080, 1920, &design, 0), 0);
+    int cx = r.L.bat_x + r.L.bat_w / 2, cy = r.L.bat_y + r.L.bat_h * 3 / 4;
+    struct scene sc = { 100, 1, 0, -1, POLICY_MSG_NONE };
+    renderer_frame(&r, &sc, 0);
+    uint32_t c = r.canvas[(size_t)cy * 1080 + cx];
+    EXPECT_EQ(c >> 16 & 0xff, 0u);
+    EXPECT_GT(c >> 8 & 0xff, 0xb0u);
+    EXPECT_GT(c >> 8 & 0xff, c & 0xff);
+    sc.full = 0;
+    sc.level = 90;
+    renderer_frame(&r, &sc, 0);
+    c = r.canvas[(size_t)cy * 1080 + cx];
+    EXPECT_GT(c & 0xff, c >> 8 & 0xff);             // charging: blue
     renderer_free(&r);
 }
 
@@ -230,7 +304,7 @@ TEST(Renderer, StaticModeOnlyRedrawsOnChange)
     struct renderer r;
     art_load(&design, assets());
     ASSERT_EQ(renderer_init(&r, 540, 960, &design, 0), 0);
-    struct scene sc = { 42, 0, 0, POLICY_MSG_NONE };
+    struct scene sc = { 42, 0, 0, -1, POLICY_MSG_NONE };
     EXPECT_EQ(renderer_frame(&r, &sc, 0), 1);
     EXPECT_EQ(renderer_frame(&r, &sc, 500), -1);
     renderer_invalidate(&r);
@@ -244,7 +318,7 @@ TEST(Renderer, WithoutArtwork)
     struct renderer r;
     std::memset(&design, 0, sizeof(design));
     ASSERT_EQ(renderer_init(&r, 720, 1280, &design, 1), 0);
-    struct scene sc = { 7, 0, 1, POLICY_MSG_TOO_LOW };
+    struct scene sc = { 7, 0, 1, -1, POLICY_MSG_TOO_LOW };
     EXPECT_EQ(renderer_frame(&r, &sc, 0), 1);
     renderer_free(&r);
 }

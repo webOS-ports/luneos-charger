@@ -31,6 +31,7 @@ extern "C" {
 enum sprite_id {
     SPR_DIGIT0, SPR_DIGIT9 = SPR_DIGIT0 + 9, SPR_PCT,
     SPR_CHARGING, SPR_CHARGED, SPR_FAST, SPR_HINT, SPR_UNPLUGGED, SPR_TOO_LOW,
+    SPR_T0, SPR_T9 = SPR_T0 + 9, SPR_T_FULL_IN, SPR_T_H, SPR_T_MIN, SPR_T_SPACE,
     SPR_N
 };
 
@@ -63,7 +64,7 @@ struct layout {
     int bat_x, bat_y, bat_w, bat_h, bat_edge, bat_gap, bat_r;
     int nub_x, nub_y, nub_w, nub_h, nub_r;
     int text_cx;                    /* centre of the battery's column */
-    int pct_y, label_y;
+    int pct_y, label_y, eta_y;
     int hint_cx, hint_y;
 };
 
@@ -75,6 +76,7 @@ struct scene {
     int level;                      /* percent shown, -1 unknown */
     int full;
     int fast;                       /* a fast charger: bolt and label */
+    int eta_min;                    /* minutes to full, -1: not shown */
     enum policy_message msg;
 };
 

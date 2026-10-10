@@ -13,7 +13,7 @@ gets it at half size, and nothing up to 2880 wide is blurred by upscaling.
 
   logo.png   the LuneOS logo, RGBA, LOGO_SIZE * ASSET_SCALE square
   text.png   every string and digit drawn, as 8-bit coverage stacked into
-             one atlas; the charger tints and blends them
+             columns of one atlas; the charger tints and blends them
   text.idx   one line per atlas entry: name x y w h
 
 Digits and '%' are rendered in cells of the font's full ascent + descent and
@@ -49,6 +49,8 @@ LOGO_SIZE = 400 * ASSET_SCALE
 DIGIT_PT = 200 * ASSET_SCALE
 LABEL_PT = 75 * ASSET_SCALE
 HINT_PT = 53 * ASSET_SCALE
+ETA_PT = 60 * ASSET_SCALE
+COLUMN_H = 4096
 
 STRINGS = [
     ('charging', 'Charging', LABEL_PT),
@@ -83,16 +85,35 @@ def main():
         im = Image.new('L', (int(round(font.getlength(ch))), ascent + descent), 0)
         ImageDraw.Draw(im).text((0, 0), ch, font=font, fill=255)
         entries.append(('glyph_' + name, im))
+    # The remaining-time line, composed at run time ("Full in 1 h 20 min")
+    # from pieces in cells of one height and their advance widths, so they
+    # share a baseline like the big digits.
+    small = ImageFont.truetype(text_font, ETA_PT)
+    s_asc, s_desc = small.getmetrics()
+    for name, text in [('t%d' % i, str(i)) for i in range(10)] + [
+            ('t_full_in', 'Full in'), ('t_h', 'h'), ('t_min', 'min'),
+            ('t_space', ' ')]:
+        im = Image.new('L', (int(round(small.getlength(text))), s_asc + s_desc), 0)
+        ImageDraw.Draw(im).text((0, 0), text, font=small, fill=255)
+        entries.append((name, im))
     for name, text, pt in STRINGS:
         entries.append((name, text_cov(text, ImageFont.truetype(text_font, pt))))
 
-    width = max(im.width for _, im in entries)
-    atlas = Image.new('L', (width, sum(im.height for _, im in entries)), 0)
-    lines, y = [], 0
+    # Stack the entries in columns no taller than COLUMN_H, so the atlas stays
+    # well inside what the loader accepts (8192 a side).
+    places, x, y, col_w, height = [], 0, 0, 0, 0
     for name, im in entries:
-        atlas.paste(im, (0, y))
-        lines.append('%s 0 %d %d %d' % (name, y, im.width, im.height))
+        if y and y + im.height > COLUMN_H:
+            x, y, col_w = x + col_w + 2, 0, 0
+        places.append((name, im, x, y))
+        col_w = max(col_w, im.width)
         y += im.height
+        height = max(height, y)
+    atlas = Image.new('L', (x + col_w, height), 0)
+    lines = []
+    for name, im, px, py in places:
+        atlas.paste(im, (px, py))
+        lines.append('%s %d %d %d %d' % (name, px, py, im.width, im.height))
     atlas.save(os.path.join(outdir, 'text.png'), optimize=True)
     with open(os.path.join(outdir, 'text.idx'), 'w') as f:
         f.write('\n'.join(lines) + '\n')

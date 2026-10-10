@@ -18,6 +18,9 @@
  *   - unplugging the charger exits EXIT_POWEROFF after a grace period;
  *   - the notification LED, if there is one, is red while charging and green
  *     when charged;
+ *   - the time until it is charged, where the gauge gives enough to tell
+ *     (power_time_to_full(), or the measured rate the level rises);
+ *   - a charged battery in the green of LuneOS's status-bar battery;
  *   - on a fast charger (Quick Charge, USB PD, or more than 7.5 W offered;
  *     see power_charge_speed()) the label says so, a bolt sits in the battery
  *     and the band sweeps twice as fast.
@@ -56,6 +59,7 @@
 #define POLL_MS 500             /* charger and battery state */
 #define CYCLE_MS 1600           /* one sweep of the charging band */
 #define FAST_CYCLE_MS 800       /* ... on a fast charger */
+#define ETA_MS 30000            /* recompute the remaining time this often */
 
 struct opts {
     struct policy_config policy;
@@ -206,6 +210,9 @@ int main(int argc, char **argv)
     static struct state st;
     enum charger_state charger;
     enum charge_speed speed;
+    struct eta_trend trend;
+    long long eta_at = 0;
+    int eta_min = -1;
     char why[96];
     long long start, polled;
     int detect = 0, capacity, full, ret;
@@ -246,6 +253,7 @@ int main(int argc, char **argv)
         leds_find();
 
     start = polled = now_ms();
+    eta_trend_reset(&trend);
     policy_init(&st.policy, &o.policy, start);
     st.screen = -1;
     charger = power_charger();
@@ -280,6 +288,10 @@ int main(int argc, char **argv)
             charger = c;
             capacity = cap;
             full = f;
+            if (charger == CHARGER_OFFLINE)
+                eta_trend_reset(&trend);
+            else
+                eta_trend_add(&trend, t, capacity);
         }
 
         ex = policy_update(&st.policy, t, charger, capacity);
@@ -295,6 +307,27 @@ int main(int argc, char **argv)
             leds_show(charger == CHARGER_OFFLINE ? LED_SHOW_OFF :
                       full ? LED_SHOW_FULL : LED_SHOW_CHARGING);
 
+        /* Remaining time: the driver or the charge counters, else the rate
+         * the level has been rising at; shown in whole minutes, rounded up,
+         * and not while full, unplugged or unknown. */
+        if (t - eta_at >= ETA_MS || (full && eta_min >= 0) ||
+            (charger == CHARGER_OFFLINE && eta_min >= 0)) {
+            long long s = full || charger == CHARGER_OFFLINE ? -1 :
+                          o.level >= 0 ? -1 : power_time_to_full();
+            int m;
+            if (s < 0 && !full && charger != CHARGER_OFFLINE && o.level < 0)
+                s = eta_trend_seconds(&trend, capacity);
+            m = s < 0 ? -1 : (int)((s + 59) / 60);
+            if (m == 0)
+                m = 1;
+            if (m != eta_min && m < 0)
+                log_msg("time to full: unknown");
+            else if (m != eta_min)
+                log_msg("time to full: %d min", m);
+            eta_min = m;
+            eta_at = t;
+        }
+
         wait = policy_next_deadline(&st.policy, t);
         if (wait > POLL_MS)
             wait = POLL_MS;
@@ -302,7 +335,7 @@ int main(int argc, char **argv)
             int fast = speed == CHARGE_SPEED_FAST && charger != CHARGER_OFFLINE;
             int cycle = fast ? FAST_CYCLE_MS : CYCLE_MS;
             struct scene sc = {
-                power_ui_percent(capacity), full, fast,
+                power_ui_percent(capacity), full, fast, eta_min,
                 policy_message(&st.policy, t),
             };
             int phase = (int)((t - start) % cycle) * 1000 / cycle;

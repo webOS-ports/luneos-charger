@@ -217,6 +217,128 @@ enum charge_speed power_charge_speed(long long fast_uw, char *why, size_t why_le
     return speed;
 }
 
+/* What "full" means here: LuneOS shows 100 % at gauge 95 %. */
+#define FULL_PERCENT 95
+#define ETA_MAX_S (48LL * 3600)
+
+long long power_eta_from_counters(long long full, long long now, long long rate)
+{
+    long long target, left;
+
+    if (full <= 0 || now < 0 || rate < 0)
+        return -1;
+    target = full / 100 * FULL_PERCENT;
+    left = target - now;
+    if (left <= 0)
+        return 0;
+    /* Below about 1/200 C the reading is noise, not a charge rate. */
+    if (rate < full / 200 || rate == 0)
+        return -1;
+    if (left / rate > ETA_MAX_S / 3600)
+        return -1;
+    return left * 3600 / rate;
+}
+
+static long long attr_ll(const char *attr, long long def)
+{
+    char path[512];
+
+    snprintf(path, sizeof(path), "%s/%s", bat_dir, attr);
+    return read_ll(path, def);
+}
+
+static long long abs_ll(long long v)
+{
+    return v < 0 ? -v : v;
+}
+
+long long power_time_to_full(void)
+{
+    static const char *const ttf[] = { "time_to_full_avg", "time_to_full_now", NULL };
+    char path[512], st[32];
+    long long full, now, rate, eta;
+
+    if (!bat_dir[0])
+        return -1;
+    snprintf(path, sizeof(path), "%s/status", bat_dir);
+    if (read_str(path, st, sizeof(st)) <= 0 || strcmp(st, "Charging"))
+        return -1;
+    for (int i = 0; ttf[i]; i++) {
+        long long s = attr_ll(ttf[i], -1);
+        if (s > 0 && s < ETA_MAX_S)
+            return s;
+    }
+    full = attr_ll("charge_full", -1);
+    now = attr_ll("charge_now", -1);
+    if (now < 0)
+        now = attr_ll("charge_counter", -1);
+    rate = attr_ll("current_avg", 0);
+    if (rate == 0)
+        rate = attr_ll("current_now", 0);
+    eta = power_eta_from_counters(full, now, abs_ll(rate));
+    if (eta >= 0)
+        return eta;
+    full = attr_ll("energy_full", -1);
+    now = attr_ll("energy_now", -1);
+    rate = attr_ll("power_avg", 0);
+    if (rate == 0)
+        rate = attr_ll("power_now", 0);
+    return power_eta_from_counters(full, now, abs_ll(rate));
+}
+
+void eta_trend_reset(struct eta_trend *e)
+{
+    memset(e, 0, sizeof(*e));
+}
+
+#define TREND_N ((int)(sizeof(((struct eta_trend *)0)->t) / sizeof(long long)))
+#define TREND_WINDOW_MS (30LL * 60 * 1000)
+#define TREND_MIN_MS (3LL * 60 * 1000)
+
+void eta_trend_add(struct eta_trend *e, long long now_ms, int capacity)
+{
+    int keep = 0;
+
+    if (capacity < 0)
+        return;
+    if (e->n && capacity < e->cap[e->n - 1]) {
+        eta_trend_reset(e);             /* falling: not charging after all */
+    } else if (e->n && capacity == e->cap[e->n - 1]) {
+        return;                         /* only the moments it rises count */
+    }
+    /* Drop what is older than the window, and the oldest if full. */
+    while (keep < e->n && now_ms - e->t[keep] > TREND_WINDOW_MS)
+        keep++;
+    if (e->n - keep >= TREND_N)
+        keep = e->n - TREND_N + 1;
+    if (keep) {
+        memmove(e->t, e->t + keep, (size_t)(e->n - keep) * sizeof(e->t[0]));
+        memmove(e->cap, e->cap + keep, (size_t)(e->n - keep) * sizeof(e->cap[0]));
+        e->n -= keep;
+    }
+    e->t[e->n] = now_ms;
+    e->cap[e->n] = capacity;
+    e->n++;
+}
+
+long long eta_trend_seconds(const struct eta_trend *e, int capacity)
+{
+    long long dt;
+    int dc;
+
+    if (capacity >= FULL_PERCENT)
+        return 0;
+    /* Three points = two rises; the first point is when it was first seen,
+     * not when that level was reached, so it only anchors the start. */
+    if (e->n < 3)
+        return -1;
+    dt = e->t[e->n - 1] - e->t[1];
+    dc = e->cap[e->n - 1] - e->cap[1];
+    if (dt < TREND_MIN_MS || dc <= 0)
+        return -1;
+    return (long long)(FULL_PERCENT - capacity) * dt / dc / 1000;
+}
+
 int power_capacity(void)
 {
     char path[512];

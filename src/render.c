@@ -14,6 +14,8 @@ static const char *const sprite_names[SPR_N] = {
     "glyph_0", "glyph_1", "glyph_2", "glyph_3", "glyph_4",
     "glyph_5", "glyph_6", "glyph_7", "glyph_8", "glyph_9", "glyph_pct",
     "charging", "charged", "fast", "hint", "unplugged", "too_low",
+    "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9",
+    "t_full_in", "t_h", "t_min", "t_space",
 };
 
 /* A non-negative decimal of at most five digits (the atlas is far smaller),
@@ -140,6 +142,7 @@ void art_free(struct art *a)
 #define NUB_R 13
 #define GLYPH_H 258
 #define LABEL_H 75
+#define ETA_H 80        /* the remaining-time line, and its gap: 16 */
 #define HINT_H 60
 
 void layout_compute(int w, int h, int glyph_h, struct layout *L)
@@ -205,14 +208,16 @@ void layout_compute(int w, int h, int glyph_h, struct layout *L)
     if (L->square) {
         /* Percentage and label centred on the battery's height, to its
          * right. */
-        int text_y = bat_y + (BAT_H - glyph_h - 20 - LABEL_H) / 2;
+        int text_y = bat_y + (BAT_H - glyph_h - 20 - LABEL_H - 16 - ETA_H) / 2;
         L->text_cx = X(DESIGN_SQ / 2.0 + 300);
         L->pct_y = Y(text_y);
         L->label_y = Y(text_y + glyph_h + 20);
+        L->eta_y = Y(text_y + glyph_h + 20 + LABEL_H + 16);
     } else {
         L->text_cx = X(col_cx);
         L->pct_y = Y(bat_y + BAT_H + 50);
         L->label_y = Y(bat_y + BAT_H + 50 + glyph_h + 20);
+        L->eta_y = Y(bat_y + BAT_H + 50 + glyph_h + 20 + LABEL_H + 16);
     }
     L->hint_cx = X(dw / 2.0);
     L->hint_y = Y(hint_y);
@@ -392,6 +397,46 @@ static int make_bolt(struct image *b, int w, int h)
     return 0;
 }
 
+/* "Full in 1 h 20 min", "Full in 2 h", "Full in 35 min", from the t_* cells,
+ * centred on cx. Nothing if a piece is missing. */
+static void draw_eta(struct renderer *r, int minutes, int cx, int y0, uint32_t c)
+{
+    int seq[24], n = 0, width = 0, x, h = minutes / 60, m = minutes % 60;
+    char num[12];
+
+#define PUT(id) do { if (n < 24) seq[n++] = (id); } while (0)
+    PUT(SPR_T_FULL_IN);
+    if (h) {
+        PUT(SPR_T_SPACE);
+        snprintf(num, sizeof(num), "%d", h);
+        for (const char *p = num; *p; p++)
+            PUT(SPR_T0 + (*p - '0'));
+        PUT(SPR_T_SPACE);
+        PUT(SPR_T_H);
+    }
+    if (m || !h) {
+        PUT(SPR_T_SPACE);
+        snprintf(num, sizeof(num), "%d", m ? m : 1);
+        for (const char *p = num; *p; p++)
+            PUT(SPR_T0 + (*p - '0'));
+        PUT(SPR_T_SPACE);
+        PUT(SPR_T_MIN);
+    }
+#undef PUT
+    for (int i = 0; i < n; i++) {
+        if (!r->art.spr[seq[i]].px && seq[i] != SPR_T_SPACE)
+            return;
+        width += r->art.spr[seq[i]].w;
+    }
+    x = cx - width / 2;
+    for (int i = 0; i < n; i++) {
+        const struct image *s = &r->art.spr[seq[i]];
+        if (s->px)
+            draw_sprite(r, s, x, y0, c);
+        x += s->w;
+    }
+}
+
 int renderer_init(struct renderer *r, int w, int h, struct art *design,
                   int animate)
 {
@@ -450,7 +495,7 @@ int renderer_frame(struct renderer *r, const struct scene *sc, int phase)
 
     if (!r->have_last || r->last.level != sc->level ||
         r->last.full != sc->full || r->last.fast != sc->fast ||
-        r->last.msg != sc->msg) {
+        r->last.eta_min != sc->eta_min || r->last.msg != sc->msg) {
         const struct image *msg = NULL;
         r->last = *sc;
         r->have_last = 1;
@@ -469,6 +514,8 @@ int renderer_frame(struct renderer *r, const struct scene *sc, int phase)
         draw_centred(r, &r->art.spr[sc->full ? SPR_CHARGED :
                                     sc->fast ? SPR_FAST : SPR_CHARGING],
                      L->text_cx, L->label_y, label);
+        if (!sc->full && sc->eta_min >= 0)
+            draw_eta(r, sc->eta_min, L->text_cx, L->eta_y, rgb(0x8a, 0x98, 0xaa));
         if (sc->msg == POLICY_MSG_UNPLUGGED)
             msg = &r->art.spr[SPR_UNPLUGGED];
         else if (sc->msg == POLICY_MSG_TOO_LOW)
@@ -505,6 +552,21 @@ int renderer_frame(struct renderer *r, const struct scene *sc, int phase)
     }
     sweep_top = sc->full || !r->animate ? fill_top
                                         : fill_top - (fill_top - iy) * phase / 1000;
+    if (sc->full) {
+        /* Charged: the green of LuneOS's own status-bar battery
+         * (luna-next-cardshell images/statusbar/battery/battery-charged.png),
+         * a horizontal sheen from #00b400 through #00f375 at 60 % to
+         * #00c313. */
+        for (int x = ix; x < ix + iw; x++) {
+            int f = (x - ix) * 1000 / (iw > 1 ? iw - 1 : 1);
+            uint32_t c = f < 600 ? rgb(0, 0xb4 + (0xf3 - 0xb4) * f / 600, 0x75 * f / 600)
+                                 : rgb(0, 0xf3 - (0xf3 - 0xc3) * (f - 600) / 400,
+                                       0x75 - (0x75 - 0x13) * (f - 600) / 400);
+            for (int y = fill_top; y < iy + ih; y++)
+                plot(r, x, y, c, rrect_cov(x, y, ix, iy, iw, ih, ir));
+        }
+        return full_redraw;
+    }
     for (int y = iy; y < iy + ih; y++) {
         int t = (y - iy) * 255 / ih;        /* 0 at the top, 255 at the bottom */
         uint32_t c;
@@ -520,7 +582,7 @@ int renderer_frame(struct renderer *r, const struct scene *sc, int phase)
             plot(r, x, y, c, rrect_cov(x, y, ix, iy, iw, ih, ir));
     }
     /* A fast charger: a white bolt over the charge, centred. */
-    if (sc->fast && !sc->full && r->bolt.px)
+    if (sc->fast && r->bolt.px)
         draw_sprite(r, &r->bolt, ix + (iw - r->bolt.w) / 2,
                     iy + (ih - r->bolt.h) / 2, rgb(0xff, 0xff, 0xff));
     return full_redraw;
