@@ -6,10 +6,12 @@ Not run at build time - Pillow is not something the initramfs build should
 need - so the outputs are committed. Rerun after changing the logo, the font,
 the sizes or the strings, and commit all three files.
 
-Everything is rendered at design size (src/render.h: a 1440 x 2400 portrait
-reference screen); luneos-charger resamples it once at start-up to the panel.
+Everything is rendered at ASSET_SCALE times design size (src/render.h: a
+1440 x 2400 portrait reference screen), so that luneos-charger, which
+resamples it once at start-up, only ever scales it down: a 1440-wide panel
+gets it at half size, and nothing up to 2880 wide is blurred by upscaling.
 
-  logo.png   the LuneOS logo, RGBA, LOGO_SIZE square
+  logo.png   the LuneOS logo, RGBA, LOGO_SIZE * ASSET_SCALE square
   text.png   every string and digit drawn, as 8-bit coverage stacked into
              one atlas; the charger tints and blends them
   text.idx   one line per atlas entry: name x y w h
@@ -28,11 +30,13 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-# Design sizes: keep in step with LOGO and GLYPH_H in src/render.c.
-LOGO_SIZE = 400
-DIGIT_PT = 200
-LABEL_PT = 75
-HINT_PT = 53
+# Design sizes: keep in step with LOGO, GLYPH_H and ASSET_SCALE in
+# src/render.c.
+ASSET_SCALE = 2
+LOGO_SIZE = 400 * ASSET_SCALE
+DIGIT_PT = 200 * ASSET_SCALE
+LABEL_PT = 75 * ASSET_SCALE
+HINT_PT = 53 * ASSET_SCALE
 
 STRINGS = [
     ('charging', 'Charging', LABEL_PT),

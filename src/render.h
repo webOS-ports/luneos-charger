@@ -15,9 +15,10 @@ extern "C" {
 /*
  * The screen is designed once, on a reference canvas of DESIGN_W x DESIGN_H
  * design pixels (portrait) or DESIGN_LW x DESIGN_LH (landscape), and scaled
- * uniformly to fit the panel, centred. The artwork is pre-rendered at design
- * size (tools/gen_assets.py) and resampled once at start-up, so it stays
- * sharp from a 540x960 panel to a 1440x3040 one.
+ * uniformly to fit the panel, centred: the logo and text take the same share
+ * of the screen on a 540x960 panel as on a 1440x3200 one. The artwork is
+ * pre-rendered at twice design size (tools/gen_assets.py) and resampled down
+ * once at start-up, so it stays sharp up to 2880 pixels across.
  */
 #define DESIGN_W 1440
 #define DESIGN_H 2400
@@ -36,7 +37,8 @@ struct art {
     struct image spr[SPR_N];        /* coverage */
 };
 
-/* Load logo.png, text.png and text.idx from dir into design-size art.
+/* Load logo.png, text.png and text.idx from dir, as rendered (twice design
+ * size).
  * Missing pieces are left empty and simply not drawn. Returns how many of
  * the sprites loaded. */
 int art_load(struct art *a, const char *dir);
@@ -45,7 +47,7 @@ int art_load(struct art *a, const char *dir);
  * returns -1 for an unknown name or a malformed line. Exposed for the tests. */
 int art_parse_idx_line(const char *line, struct rect *r);
 
-/* Resample design-size art by s into out. */
+/* Resample art by s into out. */
 int art_scale(const struct art *src, double s, struct art *out);
 
 void art_free(struct art *a);
@@ -82,7 +84,7 @@ struct renderer {
     struct rect dirty;              /* what changed in the last frame */
 };
 
-/* Set up for a w x h canvas with design-size art (taken over: design is
+/* Set up for a w x h canvas with the art as loaded (taken over: design is
  * freed). Returns 0 on success. */
 int renderer_init(struct renderer *r, int w, int h, struct art *design,
                   int animate);

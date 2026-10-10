@@ -101,6 +101,10 @@ void art_free(struct art *a)
 
 /* ------------------------------------------------------------- layout */
 
+/* The artwork is rendered at this multiple of design size (gen_assets.py),
+ * so that it is only ever scaled down on panels up to twice the reference. */
+#define ASSET_SCALE 2
+
 /* Design sizes, in design pixels. */
 #define LOGO 400
 #define BAT_W 320
@@ -302,7 +306,7 @@ static void draw_percent(struct renderer *r, int level, int cx, int y0,
 int renderer_init(struct renderer *r, int w, int h, struct art *design,
                   int animate)
 {
-    int glyph_h = design->spr[SPR_DIGIT0].h;
+    int glyph_h = design->spr[SPR_DIGIT0].h / ASSET_SCALE;
 
     memset(r, 0, sizeof(*r));
     r->w = w;
@@ -314,7 +318,7 @@ int renderer_init(struct renderer *r, int w, int h, struct art *design,
         return -1;
     }
     layout_compute(w, h, glyph_h, &r->L);
-    if (art_scale(design, r->L.s, &r->art) < 0) {
+    if (art_scale(design, r->L.s / ASSET_SCALE, &r->art) < 0) {
         art_free(&r->art);
         log_msg("cannot scale the artwork; drawing without it");
     }

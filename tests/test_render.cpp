@@ -79,7 +79,7 @@ TEST(Art, CommittedAssetsLoad)
 {
     struct art a;
     ASSERT_EQ(art_load(&a, ASSETS_SRC), SPR_N);
-    EXPECT_EQ(a.logo.w, 400);
+    EXPECT_EQ(a.logo.w, 800);       // twice design size
     EXPECT_EQ(a.logo.bpp, 4);
     for (int i = SPR_DIGIT0; i <= SPR_DIGIT9; i++)
         EXPECT_EQ(a.spr[i].h, a.spr[SPR_DIGIT0].h);
@@ -131,6 +131,25 @@ TEST_P(Renderer, FramesOnEveryPanel)
 }
 
 INSTANTIATE_TEST_SUITE_P(Panels, Renderer, ::testing::ValuesIn(panels));
+
+// The logo keeps its share of the screen however dense the panel, and is
+// never upscaled up to 2880 pixels across.
+TEST(Renderer, LogoScalesWithThePanel)
+{
+    for (auto [w, h] : std::vector<std::pair<int, int>>{
+             { 540, 960 }, { 1080, 1920 }, { 1440, 3200 }, { 2880, 4800 } }) {
+        struct art design;
+        struct renderer r;
+        art_load(&design, ASSETS_SRC);
+        int src_w = design.logo.w;
+        ASSERT_EQ(renderer_init(&r, w, h, &design, 1), 0);
+        SCOPED_TRACE(std::to_string(w) + "x" + std::to_string(h));
+        EXPECT_NEAR((double)r.art.logo.w / w, 400.0 / DESIGN_W, 0.01);
+        EXPECT_EQ(r.art.logo.w, r.L.logo_size);
+        EXPECT_LE(r.art.logo.w, src_w);
+        renderer_free(&r);
+    }
+}
 
 TEST(Renderer, StaticModeOnlyRedrawsOnChange)
 {
