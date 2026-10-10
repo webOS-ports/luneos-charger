@@ -1,38 +1,45 @@
 #!/usr/bin/env python3
-"""Regenerate luneos-charger's artwork: logo.png, text.png and text.idx.
+# SPDX-License-Identifier: Apache-2.0
+"""Regenerate luneos-charger's artwork: assets/logo.png, text.png and text.idx.
 
-Not run at build time - meta-android depends on nothing that ships Pillow -
-so the outputs are committed next to this script. Rerun it after changing the
-logo, the font or the strings, and commit all three files.
+Not run at build time - Pillow is not something the initramfs build should
+need - so the outputs are committed. Rerun after changing the logo, the font,
+the sizes or the strings, and commit all three files.
 
-  logo.png   the LuneOS logo, RGBA, at the size it is drawn
-  text.png   every string and digit the charger draws, as 8-bit coverage,
-             stacked into one atlas; the charger tints and blends them
+Everything is rendered at design size (src/render.h: a 1440 x 2400 portrait
+reference screen); luneos-charger resamples it once at start-up to the panel.
+
+  logo.png   the LuneOS logo, RGBA, LOGO_SIZE square
+  text.png   every string and digit drawn, as 8-bit coverage stacked into
+             one atlas; the charger tints and blends them
   text.idx   one line per atlas entry: name x y w h
 
 Digits and '%' are rendered in cells of the font's full ascent + descent and
-their advance width, so they line up on a common baseline when laid side by
-side.
+their advance width, so they line up on a common baseline side by side.
 
 Usage: gen_assets.py <logo.png> <font.ttf> <outdir>
 
-The committed outputs come from the LuneOS logo and Noto Sans Regular
-(SIL Open Font License 1.1).
+The committed outputs come from assets/src/luneos-logo.png (the LuneOS logo
+from webOS-ports/org.webosports.app.photos, Apache-2.0) and Noto Sans Regular
+(SIL Open Font License 1.1, which places no conditions on rendered output).
 """
 import os
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-LOGO_SIZE = 300
-DIGIT_PT = 150
-LABEL_PT = 56
-HINT_PT = 40
+# Design sizes: keep in step with LOGO and GLYPH_H in src/render.c.
+LOGO_SIZE = 400
+DIGIT_PT = 200
+LABEL_PT = 75
+HINT_PT = 53
 
 STRINGS = [
     ('charging', 'Charging', LABEL_PT),
     ('charged', 'Charged', LABEL_PT),
     ('hint', 'Hold the power key to start LuneOS', HINT_PT),
+    ('unplugged', 'Charger removed, powering off', HINT_PT),
+    ('too_low', 'Battery too low to start', HINT_PT),
 ]
 
 
@@ -44,6 +51,8 @@ def text_cov(text, font):
 
 
 def main():
+    if len(sys.argv) != 4:
+        sys.exit(__doc__)
     logo_path, font_path, outdir = sys.argv[1:4]
 
     Image.open(logo_path).convert('RGBA').resize(
