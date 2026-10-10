@@ -172,6 +172,13 @@ static int read_capacity(const struct opts *o)
     return o->level >= 0 ? o->level : power_capacity();
 }
 
+/* With a faked level, "full" follows it alone: the real gauge's status=Full
+ * would otherwise show "Charged" over any level being tried out. */
+static int read_full(const struct opts *o, int capacity)
+{
+    return o->level >= 0 ? power_ui_percent(capacity) >= 100 : power_full(capacity);
+}
+
 static const char *charger_name(enum charger_state c)
 {
     return c == CHARGER_ONLINE ? "online" :
@@ -234,7 +241,7 @@ int main(int argc, char **argv)
     st.screen = -1;
     charger = power_charger();
     capacity = read_capacity(&o);
-    full = power_full(capacity);
+    full = read_full(&o, capacity);
     log_msg("battery %d%% (gauge %d%%) %s, charger %s",
             power_ui_percent(capacity), capacity, full ? "full" : "charging",
             charger_name(charger));
@@ -245,7 +252,7 @@ int main(int argc, char **argv)
 
         if (t - polled >= POLL_MS) {
             enum charger_state c = power_charger();
-            int cap = read_capacity(&o), f = power_full(cap);
+            int cap = read_capacity(&o), f = read_full(&o, cap);
             polled = t;
             if (c != charger)
                 log_msg("charger %s", charger_name(c));

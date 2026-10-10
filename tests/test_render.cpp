@@ -20,6 +20,14 @@ const std::vector<std::pair<int, int>> panels = {
     { 1080, 1080 }, { 320, 480 },
 };
 
+// The committed artwork: ASSETS_SRC (set by meson), or $ASSETS_DIR when the
+// tests run somewhere the source tree is not, such as on a device.
+const char *assets()
+{
+    const char *env = std::getenv("ASSETS_DIR");
+    return env && *env ? env : ASSETS_SRC;
+}
+
 bool inside(int x, int y, int w, int h, int W, int H)
 {
     return x >= 0 && y >= 0 && w > 0 && h > 0 && x + w <= W && y + h <= H;
@@ -80,11 +88,10 @@ TEST(ArtIdx, ParseLine)
     EXPECT_EQ(art_parse_idx_line("hintx 0 0 1 1", &r), -1);
 }
 
-// The committed artwork, as installed (ASSETS_SRC is set by meson).
 TEST(Art, CommittedAssetsLoad)
 {
     struct art a;
-    ASSERT_EQ(art_load(&a, ASSETS_SRC), SPR_N);
+    ASSERT_EQ(art_load(&a, assets()), SPR_N);
     EXPECT_EQ(a.logo.w, 800);       // twice design size
     EXPECT_EQ(a.logo.bpp, 4);
     for (int i = SPR_DIGIT0; i <= SPR_DIGIT9; i++)
@@ -107,7 +114,7 @@ TEST_P(Renderer, FramesOnEveryPanel)
     auto [w, h] = GetParam();
     struct art design;
     struct renderer r;
-    art_load(&design, ASSETS_SRC);
+    art_load(&design, assets());
     ASSERT_EQ(renderer_init(&r, w, h, &design, 1), 0);
 
     struct scene sc = { 42, 0, POLICY_MSG_NONE };
@@ -146,7 +153,7 @@ TEST(Renderer, LogoScalesWithThePanel)
              { 540, 960 }, { 1080, 1920 }, { 1440, 3200 }, { 2880, 4800 } }) {
         struct art design;
         struct renderer r;
-        art_load(&design, ASSETS_SRC);
+        art_load(&design, assets());
         int src_w = design.logo.w;
         ASSERT_EQ(renderer_init(&r, w, h, &design, 1), 0);
         SCOPED_TRACE(std::to_string(w) + "x" + std::to_string(h));
@@ -161,7 +168,7 @@ TEST(Renderer, StaticModeOnlyRedrawsOnChange)
 {
     struct art design;
     struct renderer r;
-    art_load(&design, ASSETS_SRC);
+    art_load(&design, assets());
     ASSERT_EQ(renderer_init(&r, 540, 960, &design, 0), 0);
     struct scene sc = { 42, 0, POLICY_MSG_NONE };
     EXPECT_EQ(renderer_frame(&r, &sc, 0), 1);
