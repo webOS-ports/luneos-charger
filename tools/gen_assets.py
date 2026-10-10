@@ -19,11 +19,19 @@ gets it at half size, and nothing up to 2880 wide is blurred by upscaling.
 Digits and '%' are rendered in cells of the font's full ascent + descent and
 their advance width, so they line up on a common baseline side by side.
 
-Usage: gen_assets.py <logo.png> <font.ttf> <outdir>
+Usage: gen_assets.py <logo> <font.ttf> <outdir>
 
-The committed outputs come from assets/src/luneos-logo.png (the LuneOS logo
-from webOS-ports/org.webosports.app.photos, Apache-2.0) and Noto Sans Regular
-(SIL Open Font License 1.1, which places no conditions on rendered output).
+The committed outputs come from:
+  logo  psd/Luneos-logo-1024.psd in https://github.com/webOS-ports/graphics
+        (commit be7566c), the LuneOS logo's source art; Pillow reads the
+        PSD's flattened composite
+  font  Noto Sans Regular (SIL Open Font License 1.1, which places no
+        conditions on rendered output), as in Debian/Ubuntu's fonts-noto-core:
+        /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf
+
+  git clone https://github.com/webOS-ports/graphics
+  tools/gen_assets.py graphics/psd/Luneos-logo-1024.psd \
+      /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf assets
 """
 import os
 import sys

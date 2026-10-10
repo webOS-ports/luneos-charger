@@ -83,15 +83,18 @@ The tests (googletest) run the program's logic against fake `/sys` and
 policy state machine, PNG loading and resampling, the layout on panels from
 320×480 to 1440×3200, and pixel packing and rotation.
 
-`tools/gen_assets.py` regenerates `assets/` (needs Pillow; not run at build
-time).
+`tools/gen_assets.py` regenerates `assets/` from the logo's PSD in
+webOS-ports/graphics and Noto Sans (needs Pillow; not run at build time -
+see the script for the exact command).
 
 ## Licences
 
-The code is Apache-2.0 (`LICENSE`). `assets/src/luneos-logo.png` and the
-`logo.png` made from it are the LuneOS logo from
+The code is Apache-2.0 (`LICENSE`). `logo.png` is rendered from the LuneOS
+logo's source art, `psd/Luneos-logo-1024.psd` in
+[webOS-ports/graphics](https://github.com/webOS-ports/graphics); the same logo
+ships as a PNG in
 [org.webosports.app.photos](https://github.com/webOS-ports/org.webosports.app.photos)
-(Apache-2.0). `text.png` is text rendered from Noto Sans (SIL Open Font
+under Apache-2.0. `text.png` is text rendered from Noto Sans (SIL Open Font
 License 1.1, which places no conditions on rendered output).
 
 The first version was written by alan-morford for the BlackBerry KEY2
