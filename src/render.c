@@ -494,7 +494,14 @@ int renderer_frame(struct renderer *r, const struct scene *sc, int phase)
 
     /* Charge in the logo's blues (red-orange when low), and a dimmer band
      * sweeping from the level to the top while it is still charging. */
-    fill_top = iy + ih - ih * lvl / 100;
+    /* A non-zero level always shows at least 4 % of the interior: at 1 % the
+     * true height is a hairline the rounded bottom swallows. */
+    {
+        int fill_h = ih * lvl / 100;
+        if (lvl > 0 && fill_h < ih / 25)
+            fill_h = ih / 25;
+        fill_top = iy + ih - fill_h;
+    }
     sweep_top = sc->full || !r->animate ? fill_top
                                         : fill_top - (fill_top - iy) * phase / 1000;
     for (int y = iy; y < iy + ih; y++) {

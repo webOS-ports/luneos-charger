@@ -203,6 +203,27 @@ TEST(Renderer, BoltOnFastCharger)
     renderer_free(&r);
 }
 
+// 1 % is still visibly filled: the bottom row inside the battery, a few
+// pixels above the rounded corner, carries charge colour.
+TEST(Renderer, OnePercentIsVisible)
+{
+    struct art design;
+    struct renderer r;
+    art_load(&design, assets());
+    ASSERT_EQ(renderer_init(&r, 1080, 1920, &design, 0), 0);
+    int inset = r.L.bat_edge + r.L.bat_gap;
+    int ih = r.L.bat_h - 2 * inset;
+    int cx = r.L.bat_x + r.L.bat_w / 2;
+    int y = r.L.bat_y + inset + ih - ih / 50;     // 2 % up from the bottom
+    struct scene sc = { 0, 0, 0, POLICY_MSG_NONE };
+    renderer_frame(&r, &sc, 0);
+    EXPECT_EQ(r.canvas[(size_t)y * 1080 + cx], 0u);    // 0 %: empty
+    sc.level = 1;
+    renderer_frame(&r, &sc, 0);
+    EXPECT_NE(r.canvas[(size_t)y * 1080 + cx], 0u);    // 1 %: visible
+    renderer_free(&r);
+}
+
 TEST(Renderer, StaticModeOnlyRedrawsOnChange)
 {
     struct art design;
