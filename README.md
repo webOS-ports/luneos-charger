@@ -29,6 +29,24 @@ charger boot runs `luneos-charger`, which shows:
 
 Without a usable display it carries on headless (LED, power key, unplug).
 
+## In the initramfs
+
+`initramfs-scripts-halium`'s `init.sh` (meta-smartphone) runs it after the
+kernel modules are loaded and before `mountroot`, and Halium's own script no
+longer hands charger boots to Android's init. Per machine, `machine.conf` can
+set:
+
+| Variable | Values |
+|---|---|
+| `charger_mode` | `screen` (default): run luneos-charger; `boot`: boot LuneOS as usual (the MP01, which never really powers off, so every boot on a cable is a charger boot); `reboot`: reboot at once, as Droidian does |
+| `charger_on_hold` | `reboot` (default): holding the power key reboots into a normal boot; `continue`: boot LuneOS from the initramfs, for a bootloader that picks charger mode again on a warm reboot |
+| `charger_args` | extra options, such as `--rotate 90` or `--static` |
+
+`boot_backlight_node`/`boot_backlight_level`, where a machine sets them, are
+used for the backlight, and booting is refused at or below init.sh's
+`LOW_BATTERY_THRESHOLD`. If luneos-charger cannot run at all, init.sh boots
+LuneOS.
+
 ## How other distributions do it
 
 | | Detects | Shows | Where |
