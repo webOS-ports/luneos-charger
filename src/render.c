@@ -99,12 +99,12 @@ static int scaled(int v, double s)
     return n < 1 ? 1 : n;
 }
 
-int art_scale(const struct art *src, double s, struct art *out)
+int art_scale(const struct art *src, double s, int logo_size, struct art *out)
 {
     memset(out, 0, sizeof(*out));
-    if (src->logo.px &&
-        image_scale(&src->logo, 0, 0, src->logo.w, src->logo.h,
-                    scaled(src->logo.w, s), scaled(src->logo.h, s),
+    if (src->logo.px && logo_size > 0 &&
+        image_scale(&src->logo, 0, 0, src->logo.w, src->logo.h, logo_size,
+                    scaled(src->logo.h, (double)logo_size / src->logo.w),
                     &out->logo) < 0)
         return -1;
     for (int i = 0; i < SPR_N; i++) {
@@ -126,8 +126,10 @@ void art_free(struct art *a)
 
 /* ------------------------------------------------------------- layout */
 
-/* The artwork is rendered at this multiple of design size (gen_assets.py),
- * so that it is only ever scaled down on panels up to twice the reference. */
+/* The text is rendered at this multiple of design size (gen_assets.py), so
+ * that it is only ever scaled down on panels up to twice the reference. The
+ * logo is not: it is scaled to the layout's logo_size from whatever size
+ * logo.png has, which is kept small because it lives in the initramfs. */
 #define ASSET_SCALE 2
 
 /* Design sizes, in design pixels. */
@@ -452,7 +454,7 @@ int renderer_init(struct renderer *r, int w, int h, struct art *design,
         return -1;
     }
     layout_compute(w, h, glyph_h, &r->L);
-    if (art_scale(design, r->L.s / ASSET_SCALE, &r->art) < 0) {
+    if (art_scale(design, r->L.s / ASSET_SCALE, r->L.logo_size, &r->art) < 0) {
         art_free(&r->art);
         log_msg("cannot scale the artwork; drawing without it");
     }

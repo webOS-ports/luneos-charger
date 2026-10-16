@@ -6,12 +6,23 @@ Not run at build time - Pillow is not something the initramfs build should
 need - so the outputs are committed. Rerun after changing the logo, the fonts,
 the sizes or the strings, and commit all three files.
 
-Everything is rendered at ASSET_SCALE times design size (src/render.h: a
+The text is rendered at ASSET_SCALE times design size (src/render.h: a
 1440 x 2400 portrait reference screen), so that luneos-charger, which
 resamples it once at start-up, only ever scales it down: a 1440-wide panel
 gets it at half size, and nothing up to 2880 wide is blurred by upscaling.
 
-  logo.png   the LuneOS logo, RGBA, LOGO_SIZE * ASSET_SCALE square
+The logo is rendered at LOGO_SIZE, a little over its 400-pixel design size,
+not at twice it. It is a full-colour RGBA image that PNG cannot compress the
+way it does the text's flat coverage, it ships in every Halium initramfs, and
+some boot partitions are tight (the SM-T520's is 8 MiB): at 800 pixels it was
+192 KB, at 448 it is 89 KB. luneos-charger scales it to the layout's logo
+size whatever its source size, and 448 covers a layout scale of up to 1.12 -
+every panel up to 1612 wide in portrait and 2867 in landscape, the 2560 x 1600
+tablets included - without upscaling; beyond that it is drawn slightly soft.
+logo-800.png is the previous, twice-design-size rendering, kept as a
+reference; it is not installed.
+
+  logo.png   the LuneOS logo, RGBA, LOGO_SIZE square
   text.png   every string and digit drawn, as 8-bit coverage stacked into
              columns of one atlas; the charger tints and blends them
   text.idx   one line per atlas entry: name x y w h
@@ -43,9 +54,9 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 # Design sizes: keep in step with LOGO, GLYPH_H and ASSET_SCALE in
-# src/render.c.
+# src/render.c. LOGO_SIZE is the logo's source size, see the docstring.
 ASSET_SCALE = 2
-LOGO_SIZE = 400 * ASSET_SCALE
+LOGO_SIZE = 448
 DIGIT_PT = 200 * ASSET_SCALE
 LABEL_PT = 75 * ASSET_SCALE
 HINT_PT = 53 * ASSET_SCALE

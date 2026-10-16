@@ -41,8 +41,9 @@ struct art {
     struct image spr[SPR_N];        /* coverage */
 };
 
-/* Load logo.png, text.png and text.idx from dir, as rendered (twice design
- * size).
+/* Load logo.png, text.png and text.idx from dir, as rendered: the text at
+ * twice design size, the logo at whatever size it was rendered (it is scaled
+ * to the layout's logo_size, not by a fixed factor).
  * Missing pieces are left empty and simply not drawn. Returns how many of
  * the sprites loaded. */
 int art_load(struct art *a, const char *dir);
@@ -51,8 +52,9 @@ int art_load(struct art *a, const char *dir);
  * returns -1 for an unknown name or a malformed line. Exposed for the tests. */
 int art_parse_idx_line(const char *line, struct rect *r);
 
-/* Resample art by s into out. */
-int art_scale(const struct art *src, double s, struct art *out);
+/* Resample the sprites by s and the logo to logo_size pixels wide (keeping
+ * its aspect) into out. */
+int art_scale(const struct art *src, double s, int logo_size, struct art *out);
 
 void art_free(struct art *a);
 

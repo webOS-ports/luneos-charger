@@ -115,7 +115,8 @@ TEST(Art, CommittedAssetsLoad)
     // Every sprite, and so the whole atlas, loads: it must stay inside the
     // loader's size limit as strings are added.
     ASSERT_EQ(art_load(&a, assets()), SPR_N);
-    EXPECT_EQ(a.logo.w, 800);       // twice design size
+    EXPECT_EQ(a.logo.w, 448);       // display size plus headroom, not 2x
+    EXPECT_EQ(a.logo.h, 448);
     EXPECT_EQ(a.logo.bpp, 4);
     for (int i = SPR_DIGIT0; i <= SPR_DIGIT9; i++)
         EXPECT_EQ(a.spr[i].h, a.spr[SPR_DIGIT0].h);
@@ -172,7 +173,7 @@ TEST_P(Renderer, FramesOnEveryPanel)
 INSTANTIATE_TEST_SUITE_P(Panels, Renderer, ::testing::ValuesIn(panels));
 
 // The logo keeps its share of the screen however dense the panel, and is
-// never upscaled up to 2880 pixels across.
+// drawn at the layout's logo size whatever size logo.png has.
 TEST(Renderer, LogoScalesWithThePanel)
 {
     for (auto [w, h] : std::vector<std::pair<int, int>>{
@@ -180,10 +181,29 @@ TEST(Renderer, LogoScalesWithThePanel)
         struct art design;
         struct renderer r;
         art_load(&design, assets());
-        int src_w = design.logo.w;
         ASSERT_EQ(renderer_init(&r, w, h, &design, 1), 0);
         SCOPED_TRACE(std::to_string(w) + "x" + std::to_string(h));
         EXPECT_NEAR((double)r.art.logo.w / w, 400.0 / DESIGN_W, 0.01);
+        EXPECT_EQ(r.art.logo.w, r.L.logo_size);
+        EXPECT_EQ(r.art.logo.h, r.L.logo_size);
+        renderer_free(&r);
+    }
+}
+
+// The panels LuneOS ships on get the logo scaled down, never up: phones, the
+// Q25's square panel, and the 2560 x 1600 tablets (Pixel Tablet, SM-T520) in
+// either orientation, at the 448-pixel logo.png.
+TEST(Renderer, LogoNotUpscaledOnShippedPanels)
+{
+    for (auto [w, h] : std::vector<std::pair<int, int>>{
+             { 1080, 2220 }, { 1080, 2400 }, { 720, 720 }, { 1024, 768 },
+             { 2560, 1600 }, { 1600, 2560 }, { 1440, 3200 } }) {
+        struct art design;
+        struct renderer r;
+        art_load(&design, assets());
+        int src_w = design.logo.w;
+        ASSERT_EQ(renderer_init(&r, w, h, &design, 1), 0);
+        SCOPED_TRACE(std::to_string(w) + "x" + std::to_string(h));
         EXPECT_EQ(r.art.logo.w, r.L.logo_size);
         EXPECT_LE(r.art.logo.w, src_w);
         renderer_free(&r);
